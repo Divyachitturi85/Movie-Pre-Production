@@ -12,7 +12,8 @@ class NLPService:
     2. spaCy for linguistic parsing & noun chunk extraction
     3. Production-domain screenplay heuristic extractors
     4. Comprehensive equipment package generation for starting-to-ending shoot operations
-    5. AI Explainability logging
+    5. Clean Cast & Character Extraction with Entity Canonicalization
+    6. AI Explainability logging
     """
 
     # Lexicons for film production classification
@@ -100,13 +101,13 @@ class NLPService:
         action_text = scene.get("action_text", "") or ""
         dialogue_speakers = scene.get("characters", [])
 
-        # Build full text composite so that no scene content or cue is missed
+        # Build full text composite for equipment & prop matching
         full_text = f"{heading}\n{action_text}\n{raw_text}".strip()
         if not full_text:
             full_text = heading or "SCENE"
 
-        # 1. Characters: Blend Dialogue Speakers + Screenplay Uppercase Cues + NER
-        chars, char_explains = self.extract_characters(full_text, dialogue_speakers, scene_num)
+        # 1. Characters: Verified Dialogue Speakers & Named Character Cues (exclude sluglines)
+        chars, char_explains = self.extract_characters(action_text or raw_text, dialogue_speakers, scene_num)
         scene["characters"] = chars
         explain_records.extend(char_explains)
 
@@ -154,65 +155,36 @@ class NLPService:
 
     def extract_characters(self, text: str, dialogue_speakers: List[str], scene_num: int) -> Tuple[List[str], List[Dict[str, Any]]]:
         """
-        Extracts characters combining Screenplay Dialogue cues, Uppercase character cues, Hugging Face NER, and spaCy NER.
+        Extracts verified characters combining Screenplay Dialogue cues, Named character cues, and Canonical Entity Resolution.
+        Explicitly filters out locations, props, technical terms, and standalone titles.
         """
-        detected_chars = set(dialogue_speakers)
-        hf_chars = set()
-        spacy_chars = set()
-        fallback_used = False
+        from app.services.character_service import CharacterService, BLACKLIST, STANDALONE_TITLES
 
-        # Screenplay uppercase heuristic (names introduced in caps e.g. SRUJAN, VASU, VICKY, KALYAN)
-        ignore_words = {
-            'INT', 'EXT', 'DAY', 'NIGHT', 'DUSK', 'DAWN', 'SCENE', 'CUT', 'FADE', 'SHOT', 'CLOSEUP', 
-            'MONTAGE', 'ROOM', 'DOOR', 'TABLE', 'CHAIR', 'PHONE', 'SOFA', 'CONTINUOUS', 'END', 'TEXT', 
-            'EARLY', 'MORNING', 'EVENING', 'PM', 'AM', 'THE', 'AND', 'FOR', 'WITH', 'FROM', 'PROD', 
-            'OFC', 'HOUSE', 'ALL', 'OK', 'YES', 'NO', 'BUT', 'LOW', 'HIGH', 'MEDIUM', 'MGGURU'
-        }
-        for word in re.findall(r'\b[A-Z]{3,15}\b', text):
-            if word not in ignore_words:
-                detected_chars.add(word)
+        candidate_cues = []
+        for s in dialogue_speakers:
+            candidate_cues.extend(CharacterService.decompose_cue(s))
 
-        # Run Hugging Face NER if available
-        hf = self._get_hf_pipeline()
-        if hf != "FALLBACK":
-            try:
-                snippet = text[:1500]
-                ner_results = hf(snippet)
-                for ent in ner_results:
-                    if ent.get("entity_group") == "PER":
-                        name = ent.get("word", "").strip()
-                        if len(name) > 2 and name.replace(" ", "").isalpha():
-                            hf_chars.add(name.upper())
-            except Exception as e:
-                logger.warning(f"HF NER execution failed: {e}")
-                fallback_used = True
-        else:
-            fallback_used = True
+        # Extract dialogue speaker cues directly from text if present
+        text_speakers = CharacterService.extract_speakers_from_text(text)
+        candidate_cues.extend(text_speakers)
 
-        # Run spaCy NER
-        spacy_res = self.spacy_service.extract_entity_candidates(text)
-        for p in spacy_res.get("persons", []):
-            if len(p) > 2 and p.replace(" ", "").isalpha():
-                spacy_chars.add(p.upper())
-
-        # Unify
-        combined = detected_chars | {c for c in (hf_chars | spacy_chars) if len(c.split()) <= 2}
-        final_list = sorted(list(combined))
+        # Canonicalize & filter out non-character blacklist and titles
+        canonical_cast, alias_map = CharacterService.resolve_cast(candidate_cues)
+        final_list = [c for c in canonical_cast if c not in BLACKLIST and c not in STANDALONE_TITLES]
 
         explains = [
             {
                 "stage": "NER_CHARACTER",
                 "target_entity": f"Scene {scene_num} Characters",
-                "input_data": f"Scene {scene_num} text ({len(text)} chars)",
-                "ai_method": "Hugging Face BERT-NER + spaCy Linguistic Entities + Screenplay Capitalization Cues",
+                "input_data": f"Scene {scene_num} action/dialogue context",
+                "ai_method": "Screenplay Character Cue Parser + Canonical Entity Resolution",
                 "output_detected": ", ".join(final_list) if final_list else "None",
-                "confidence": 0.94 if not fallback_used else 0.88,
-                "fallback_used": fallback_used,
-                "fallback_reason": "HF Transformer loaded with rule augmentation" if not fallback_used else "Heuristic & spaCy fallback pipeline used",
+                "confidence": 0.96,
+                "fallback_used": False,
+                "fallback_reason": None,
                 "details": {
                     "dialogue_speakers": dialogue_speakers,
-                    "hf_detected": list(hf_chars),
-                    "spacy_detected": list(spacy_chars)
+                    "canonical_cast": final_list
                 }
             }
         ]

@@ -1,3 +1,4 @@
+import re
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,6 +17,7 @@ from app.schemas.location import LocationResponse
 from app.schemas.production_element import ProductionElementResponse, ProductionElementCreate
 from app.services.nlp_service import NLPService
 from app.services.complexity_service import ComplexityService
+from app.services.character_service import CharacterService, BLACKLIST, STANDALONE_TITLES
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ def run_nlp_analysis(project_id: int, db: Session = Depends(get_db)):
     Executes the full AI NLP & Breakdown Pipeline:
     - Hugging Face BERT-NER token classification
     - spaCy linguistic POS and noun chunk extraction
-    - Screenplay entity heuristics
+    - Clean Screenplay Cast Extraction & Canonical Entity Resolution
     - Scene complexity scoring (Low/Med/High/Very High)
     - Production element categorization (Props, Costumes, Vehicles, VFX/SFX, Equipment)
     """
@@ -51,10 +53,36 @@ def run_nlp_analysis(project_id: int, db: Session = Depends(get_db)):
         AIExplainabilityRecord.stage.in_(["NER_CHARACTER", "NER_LOCATION", "NER_PROP", "NER_COSTUME", "NER_VEHICLE", "NER_VFX", "NER_SFX", "NER_WEAPON", "RESOURCE_EQUIPMENT", "COMPLEXITY_SCORING"])
     ).delete()
 
+    # 1. Discover verified dialogue speakers across the entire screenplay
+    all_raw_cues = []
+    for sc in scenes:
+        cues = CharacterService.extract_speakers_from_text(sc.raw_content or "")
+        all_raw_cues.extend(cues)
+
+    canonical_cast, alias_map = CharacterService.resolve_cast(all_raw_cues)
+    logger.info(f"Project {project_id} discovered canonical cast: {canonical_cast}")
+
     character_stats = {}
     location_stats = {}
 
     for sc in scenes:
+        # Determine verified dialogue speakers for this scene
+        scene_speakers = CharacterService.extract_speakers_from_text(sc.raw_content or "")
+        scene_chars = set()
+        for sp in scene_speakers:
+            canon = alias_map.get(sp)
+            if canon and canon not in BLACKLIST and canon not in STANDALONE_TITLES:
+                scene_chars.add(canon)
+
+        # Also detect presence of canonical cast mentioned in scene action text
+        action_search_text = f"{sc.action_text or ''} {sc.raw_content or ''}".lower()
+        for canon in canonical_cast:
+            sub_words = [w.lower() for w in canon.split() if w not in STANDALONE_TITLES and len(w) > 2]
+            if sub_words and any(re.search(r'\b' + re.escape(sw) + r'\b', action_search_text) for sw in sub_words):
+                scene_chars.add(canon)
+
+        final_scene_chars = sorted(list(scene_chars))
+
         sc_dict = {
             "scene_number": sc.scene_number,
             "heading": sc.heading,
@@ -64,7 +92,7 @@ def run_nlp_analysis(project_id: int, db: Session = Depends(get_db)):
             "estimated_pages": sc.estimated_pages,
             "raw_content": sc.raw_content,
             "action_text": sc.action_text,
-            "characters": []
+            "characters": final_scene_chars
         }
 
         # Run NLP entity extraction
@@ -119,31 +147,39 @@ def run_nlp_analysis(project_id: int, db: Session = Depends(get_db)):
             db.add(pe)
 
         # Aggregate Characters
-        for c_name in sc_dict.get("characters", []):
-            stat = character_stats.setdefault(c_name, {"scenes": [], "dialogues": 0})
-            stat["scenes"].append(sc.scene_number)
-            stat["dialogues"] += 2
+        for c_name in final_scene_chars:
+            stat = character_stats.setdefault(c_name, {"scenes": set(), "dialogues": 0})
+            stat["scenes"].add(sc.scene_number)
+            if c_name in scene_speakers or any(alias_map.get(sp) == c_name for sp in scene_speakers):
+                stat["dialogues"] += 2
 
         # Aggregate Locations
         loc_name = sc.location_name or "MAIN SET"
         l_stat = location_stats.setdefault(loc_name, {"scenes": [], "ie": sc.interior_exterior, "dn": sc.time_of_day})
         l_stat["scenes"].append(sc.scene_number)
 
-    # Save aggregated Characters
-    for c_name, stat in character_stats.items():
-        sc_cnt = len(stat["scenes"])
-        role = "LEAD" if sc_cnt >= 5 else ("SUPPORTING" if sc_cnt >= 2 else "MINOR")
+    # Save resolved canonical Characters (purging non-characters, aliases, and titles)
+    resolved_char_stats = CharacterService.resolve_character_stats(character_stats)
+    for c_name, stat in resolved_char_stats.items():
+        sc_list = stat["scenes"]
+        sc_cnt = len(sc_list)
+        profile = CharacterService.get_character_profile(
+            name=c_name,
+            scene_count=sc_cnt,
+            dialogue_count=stat["dialogues"],
+            genre=project.genre
+        )
         c_mod = Character(
             project_id=project_id,
             name=c_name,
-            role=role,
+            role=profile["role"],
             scene_count=sc_cnt,
             dialogue_count=stat["dialogues"],
-            estimated_screen_time_minutes=round(sc_cnt * 3.5, 1),
-            required_shooting_days=max(1, (sc_cnt + 1) // 2),
-            costume_requirements="Production wardrobe matched to character role",
-            makeup_requirements="Standard continuity makeup",
-            scene_ids=stat["scenes"]
+            estimated_screen_time_minutes=profile["estimated_screen_time_minutes"],
+            required_shooting_days=profile["required_shooting_days"],
+            costume_requirements=profile["costume_requirements"],
+            makeup_requirements=profile["makeup_requirements"],
+            scene_ids=sc_list
         )
         db.add(c_mod)
 
@@ -170,7 +206,7 @@ def run_nlp_analysis(project_id: int, db: Session = Depends(get_db)):
     return {
         "status": "SUCCESS",
         "message": f"Analyzed {len(scenes)} scenes successfully.",
-        "characters_extracted": len(character_stats),
+        "characters_extracted": len(resolved_char_stats),
         "locations_extracted": len(location_stats),
         "total_elements": db.query(ProductionElement).filter(ProductionElement.project_id == project_id).count()
     }
