@@ -301,7 +301,7 @@ class BudgetService:
         grand_total = round(subtotal + contingency_amount + tax_amount, 2)
 
         return {
-            "currency": "USD",
+            "currency": "INR",
             "subtotal": round(subtotal, 2),
             "contingency_rate": contingency_rate,
             "contingency_amount": contingency_amount,

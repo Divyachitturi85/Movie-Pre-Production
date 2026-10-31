@@ -244,11 +244,13 @@ export default function SchedulePage() {
                           <td className="py-2.5 px-3 font-bold text-slate-400 font-mono">#{ss.sequence_order}</td>
                           <td className="py-2.5 px-3">
                             <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-400 font-bold font-mono">
-                              Sc {ss.scene_number || ss.scene_id}
+                              Sc {ss.scene_number ?? ss.scene_id}
                             </span>
                           </td>
                           <td className="py-2.5 px-3 font-semibold text-white">
-                            {ss.heading || `Scene ${ss.scene_number}`}
+                            <div className="font-semibold text-white tracking-wide">
+                              {(ss.first_line || ss.heading || (ss.scene_number ? `Scene ${ss.scene_number}` : `Scene ${ss.scene_id}`)).trim()}
+                            </div>
                           </td>
                           <td className="py-2.5 px-3 text-slate-300">
                             {ss.location_name}

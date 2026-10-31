@@ -101,7 +101,7 @@ def get_comprehensive_report(project_id: int, db: Session = Depends(get_db)):
             "algorithm": "Google OR-Tools CP-SAT (Constraint Programming)"
         },
         "budget_summary": {
-            "currency": budget.currency if budget else "USD",
+            "currency": budget.currency if budget else "INR",
             "subtotal": budget.subtotal if budget else 0.0,
             "contingency_amount": budget.contingency_amount if budget else 0.0,
             "tax_amount": budget.tax_amount if budget else 0.0,

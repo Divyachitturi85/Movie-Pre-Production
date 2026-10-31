@@ -16,6 +16,7 @@ class ScheduledSceneResponse(BaseModel):
     # Nested scene details
     scene_number: Optional[int] = None
     heading: Optional[str] = None
+    first_line: Optional[str] = None
     interior_exterior: Optional[str] = None
     time_of_day: Optional[str] = None
     pages: Optional[float] = None

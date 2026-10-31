@@ -112,7 +112,7 @@ def optimize_schedule(
                 estimated_start_time=s_item["estimated_start_time"],
                 estimated_duration_minutes=s_item["estimated_duration_minutes"],
                 setup_time_minutes=s_item["setup_time_minutes"],
-                location_name=s_item["location_name"],
+                location_name=sc_ref.location_name if (sc_ref and sc_ref.location_name) else s_item.get("location_name"),
                 company_move_before=s_item["company_move_before"]
             )
             db.add(scheduled_scene)

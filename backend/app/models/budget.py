@@ -8,7 +8,7 @@ class Budget(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, unique=True)
-    currency = Column(String(10), default="USD")
+    currency = Column(String(10), default="INR")
     
     # Financial totals
     subtotal = Column(Float, default=0.0)
