@@ -63,7 +63,9 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": f"An internal production system error occurred: {str(exc)}"}
     )
 
-# Health check
+# Health check & Root endpoints
+@app.get("/", tags=["Health"])
+@app.get("/health", tags=["Health"])
 @app.get("/api/health", tags=["Health"])
 def health_check():
     return {
@@ -78,7 +80,7 @@ def health_check():
         }
     }
 
-# Include API Routers
+# Include API Routers with standard /api prefix
 app.include_router(projects_router, prefix=settings.API_PREFIX)
 app.include_router(scripts_router, prefix=settings.API_PREFIX)
 app.include_router(analysis_router, prefix=settings.API_PREFIX)
@@ -87,6 +89,16 @@ app.include_router(budget_router, prefix=settings.API_PREFIX)
 app.include_router(documents_router, prefix=settings.API_PREFIX)
 app.include_router(explainability_router, prefix=settings.API_PREFIX)
 app.include_router(reports_router, prefix=settings.API_PREFIX)
+
+# Also mount at root as fallback so neither /api/projects nor /projects can ever 404
+app.include_router(projects_router, prefix="")
+app.include_router(scripts_router, prefix="")
+app.include_router(analysis_router, prefix="")
+app.include_router(schedule_router, prefix="")
+app.include_router(budget_router, prefix="")
+app.include_router(documents_router, prefix="")
+app.include_router(explainability_router, prefix="")
+app.include_router(reports_router, prefix="")
 
 if __name__ == "__main__":
     import uvicorn

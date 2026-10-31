@@ -15,6 +15,7 @@ from app.services.demo_service import DemoService
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
 @router.get("", response_model=List[ProjectResponse])
+@router.get("/", response_model=List[ProjectResponse], include_in_schema=False)
 def list_projects(db: Session = Depends(get_db)):
     projects = db.query(Project).order_by(Project.created_at.desc()).all()
     results = []
@@ -45,6 +46,7 @@ def list_projects(db: Session = Depends(get_db)):
     return results
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
     project = Project(
         name=payload.name,

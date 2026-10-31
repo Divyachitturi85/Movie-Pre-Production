@@ -1,7 +1,16 @@
 import axios from 'axios';
 
+const getBaseUrl = () => {
+  let url = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://movie-pre-production.onrender.com/api' : '/api');
+  url = (url || '/api').trim().replace(/\/+$/, '');
+  if (url !== '/api' && !url.endsWith('/api')) {
+    url = `${url}/api`;
+  }
+  return url;
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://movie-pre-production.onrender.com/api' : '/api'),
+  baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json'
   }
@@ -62,10 +71,10 @@ export const documentService = {
   getExplainability: (projectId, stage) => api.get(`/projects/${projectId}/explainability`, { params: { stage } }).then(res => res.data),
   
   // Direct download URLs
-  getPackageDownloadUrl: (projectId) => `/api/projects/${projectId}/export/package`,
-  getCallSheetPdfUrl: (projectId, sheetId) => `/api/projects/${projectId}/call-sheets/${sheetId}/export/pdf`,
-  getCallSheetDocxUrl: (projectId, sheetId) => `/api/projects/${projectId}/call-sheets/${sheetId}/export/docx`,
-  getCallbacksPdfUrl: (projectId) => `/api/projects/${projectId}/callbacks/export/pdf`,
+  getPackageDownloadUrl: (projectId) => `${api.defaults.baseURL}/projects/${projectId}/export/package`,
+  getCallSheetPdfUrl: (projectId, sheetId) => `${api.defaults.baseURL}/projects/${projectId}/call-sheets/${sheetId}/export/pdf`,
+  getCallSheetDocxUrl: (projectId, sheetId) => `${api.defaults.baseURL}/projects/${projectId}/call-sheets/${sheetId}/export/docx`,
+  getCallbacksPdfUrl: (projectId) => `${api.defaults.baseURL}/projects/${projectId}/callbacks/export/pdf`,
 };
 
 export default api;
