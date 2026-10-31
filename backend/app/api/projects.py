@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -47,7 +47,9 @@ def list_projects(db: Session = Depends(get_db)):
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
+def create_project(payload: Optional[ProjectCreate] = None, db: Session = Depends(get_db)):
+    if payload is None:
+        payload = ProjectCreate()
     project = Project(
         name=payload.name,
         description=payload.description,
