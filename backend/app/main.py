@@ -1,10 +1,6 @@
 import sys
 import logging
-# Pre-load PyTorch before any Paddle/C++ libraries to prevent Windows OpenMP DLL conflicts
-try:
-    import torch
-except Exception:
-    pass
+# Lightweight server startup
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
