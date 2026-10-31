@@ -57,8 +57,9 @@ class NLPService:
     ]
 
     EQUIPMENT_PATTERNS = [
-        r'\b(steadicam|camera crane|jib|dolly|gimbal|drone camera|underwater camera|high-speed camera)\b',
-        r'\b(boom mic|lavalier|sound recorder|haze machine|strobe light|softbox|fresnel|red emergency light)\b'
+        r'\b(steadicam|camera crane|jib|dolly|gimbal|drone camera|underwater camera|high-speed camera|handheld camera|a-camera|b-camera)\b',
+        r'\b(boom mic|lavalier|sound recorder|haze machine|strobe light|softbox|fresnel|red emergency light|led panel|light kit|tripod|monitor|teleprompter|audio mixer)\b',
+        r'\b(phone|laptop|tablet|monitor|computer|desk|table|chair|office chair|conference table|whiteboard|projector|keyboard|mouse|notebook|clipboard)\b'
     ]
 
     def __init__(self, hf_model_name: str = "dslim/bert-base-NER"):
@@ -289,6 +290,7 @@ class NLPService:
     def extract_equipment(self, scene: Dict[str, Any], text: str, scene_num: int) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Infers camera, lighting, and sound equipment based on scene characteristics and screenplay text.
+        Includes realistic equipment needs for office, meeting, interview, conversation, and room-based scenes.
         """
         equipment = []
         explains = []
@@ -304,6 +306,11 @@ class NLPService:
         ie = scene.get("interior_exterior", "INT")
         tod = scene.get("time_of_day", "DAY")
         pages = scene.get("estimated_pages", 0.5)
+        heading = scene.get("heading", "")
+        loc_name = (scene.get("location_name") or "").upper()
+        action_text = (scene.get("action_text") or "")
+        raw_text = (scene.get("raw_content") or "")
+        combined_text = f"{heading} {loc_name} {action_text} {raw_text}".lower()
 
         # Baseline camera & sound
         base_items = [
@@ -311,6 +318,36 @@ class NLPService:
             ("Sound Recording Kit & Boom Microphone", "Production sound capture"),
             ("Primary Lighting Kit (LED / Softbox Panels)", "Base scene illumination")
         ]
+
+        # Scene-specific equipment from practical context
+        scene_keywords = {
+            "office": ["desk", "table", "chair", "computer", "monitor", "meeting", "conference", "producer", "executive", "office"],
+            "interview": ["interview", "discussion", "conversation", "speaker", "table", "chair", "camera"],
+            "room": ["room", "house", "apartment", "bedroom", "kitchen", "living room", "studio", "office"],
+            "phone_call": ["call", "phone", "tablet", "laptop", "conversation"],
+        }
+
+        if any(keyword in combined_text for keyword in scene_keywords["office"]):
+            base_items.extend([
+                ("Portable Interview Lighting Kit", "Balanced lighting for interview-style office setup"),
+                ("Tripod / Fluid Head Camera Support", "Stable coverage for seated conversation scenes"),
+                ("Laptop / Monitor / Presentation Setup", "Office-based visual detail and screen capture")
+            ])
+
+        if any(keyword in combined_text for keyword in scene_keywords["interview"]):
+            base_items.extend([
+                ("Shotgun Microphone / Boom Pole", "Close dialogue capture for interview framing"),
+                ("Three-Point Lighting Pack", "Controlled interview lighting on a single set"),
+            ])
+
+        if any(keyword in combined_text for keyword in scene_keywords["phone_call"]):
+            base_items.extend([
+                ("Mobile Phone / Tablet Prop Kit", "On-screen handheld device interaction"),
+                ("Wireless Lavaliere Mic", "Quiet, close-up audio for phone call scenes"),
+            ])
+
+        if any(keyword in combined_text for keyword in scene_keywords["room"]):
+            base_items.append(("Practical Room Lighting Package", "In-room ambience and realism for interior shooting"))
 
         if "NIGHT" in tod:
             base_items.append(("Night Exterior HMI / Strobe Lighting Kit", "High output illumination for night scenes"))
@@ -321,20 +358,14 @@ class NLPService:
 
         for name, desc in base_items:
             if name not in found_names:
-                equipment.append({
-                    "category": "EQUIPMENT",
-                    "name": name,
-                    "description": desc,
-                    "quantity": 1,
-                    "confidence": 0.88,
-                    "extraction_source": "PRODUCTION_SPECIFICATION_ENGINE"
-                })
+                self._ensure_unique_equipment(equipment, name, desc)
+                found_names.add(name)
 
         explains.append({
             "stage": "RESOURCE_EQUIPMENT",
             "target_entity": f"Scene {scene_num} Equipment",
             "input_data": f"Scene {scene_num} (INT/EXT: {ie}, Time: {tod}, Pages: {pages})",
-            "ai_method": "Production Specification Engine + Text Extraction",
+            "ai_method": "Production Specification Engine + Text Extraction + Scene Context Heuristics",
             "output_detected": f"{len(equipment)} equipment packages assigned",
             "confidence": 0.89,
             "fallback_used": False,
