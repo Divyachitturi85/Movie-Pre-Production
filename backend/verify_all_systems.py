@@ -29,7 +29,7 @@ def log_header(title):
 def main():
     log_header("1. Checking Server Availability")
     try:
-        req = urllib.request.urlopen("http://127.0.0.1:8000/api/health", timeout=5)
+        req = urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=5)
         health_data = json.loads(req.read().decode())
         print(f"Backend Health Check: HTTP {req.status} OK")
         print(f"Health Response: {json.dumps(health_data, indent=2)}")

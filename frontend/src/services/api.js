@@ -1,10 +1,14 @@
 import axios from 'axios';
 
 const getBaseUrl = () => {
-  let url = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://movie-pre-production.onrender.com/api' : '/api');
-  url = (url || '/api').trim().replace(/\/+$/, '');
-  if (url !== '/api' && !url.endsWith('/api')) {
-    url = `${url}/api`;
+  // In local development, use Vite dev proxy
+  if (import.meta.env.DEV) {
+    return '/api';
+  }
+  // In production (Vercel), always call the live Render backend directly
+  const url = (import.meta.env.VITE_API_BASE_URL || 'https://movie-pre-production.onrender.com/api').trim().replace(/\/+$/, '');
+  if (!url.endsWith('/api')) {
+    return `${url}/api`;
   }
   return url;
 };
