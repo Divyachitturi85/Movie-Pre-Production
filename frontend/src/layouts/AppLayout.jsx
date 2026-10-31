@@ -94,7 +94,7 @@ export default function AppLayout({ currentProject, setCurrentProject, projects,
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base tracking-tight text-white">CINEPLAN AI</span>
+                <span className="font-extrabold text-base tracking-tight text-white">70mm ai</span>
                 <span className="text-[10px] uppercase font-bold tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">
                   Studio Edition
                 </span>

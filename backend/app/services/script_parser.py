@@ -26,6 +26,15 @@ class ScriptParser:
 
     PARENTHETICAL_PATTERN = re.compile(r'^\s*\([^\)]+\)\s*$')
 
+    # Keywords that strongly indicate a title page / cover page scene (not a real scene)
+    TITLE_PAGE_KEYWORDS = {
+        'WRITTEN BY', 'ORIGINAL SCREENPLAY', 'BASED ON', 'FADE IN', 'FADE IN:',
+        'DRAFT', 'REVISED DRAFT', 'SHOOTING SCRIPT', 'WGA', 'REGISTERED',
+        'ALL RIGHTS RESERVED', 'COPYRIGHT', 'CONTACT', 'REPRESENTED BY',
+        'PRODUCTION DRAFT', 'FINAL DRAFT', 'SECOND DRAFT', 'THIRD DRAFT',
+        'FIRST DRAFT', 'TITLE PAGE', 'COVER PAGE'
+    }
+
     def parse_screenplay(self, script_text: str) -> List[Dict[str, Any]]:
         """
         Parses full script text into structured scenes.
@@ -91,21 +100,8 @@ class ScriptParser:
                 continue
 
             if current_scene is None:
-                # Pre-slugline title info or prologue; create default Scene 1
-                if stripped and not self.TRANSITION_PATTERN.match(stripped):
-                    current_scene = {
-                        "scene_number": scene_counter,
-                        "heading": "SCENE 1: INT. PROLOGUE - DAY",
-                        "interior_exterior": "INT",
-                        "location_name": "PROLOGUE",
-                        "time_of_day": "DAY",
-                        "characters": set(),
-                        "dialogues": [],
-                        "actions": []
-                    }
-                    scene_counter += 1
-                    raw_scene_lines = [current_scene["heading"], stripped]
-                    current_action_lines = [stripped]
+                # Pre-slugline content (title page, author, date, logline, etc.)
+                # Silently skip — do NOT create a fake scene for title/header text.
                 continue
 
             raw_scene_lines.append(line)
@@ -152,7 +148,61 @@ class ScriptParser:
         for sc in scenes:
             sc["characters"] = sorted(list(sc["characters"]))
 
+        # --- Post-processing: Remove title/cover page scenes & renumber ---
+        scenes = self._remove_title_scenes(scenes)
+        scenes = self._renumber_scenes(scenes)
+
         logger.info(f"Screenplay parsed successfully into {len(scenes)} scenes.")
+        return scenes
+
+    def _is_title_scene(self, scene: Dict[str, Any]) -> bool:
+        """
+        Detects if a scene is actually a title page / cover page, not a real scene.
+        A title scene typically has:
+          - No characters speaking
+          - No dialogue
+          - Short raw content (mostly metadata text)
+          - Contains title-page keywords in its content
+        """
+        raw = (scene.get("raw_content", "") or "").upper()
+        action = (scene.get("action_text", "") or "").upper()
+        combined = raw + " " + action
+
+        has_no_characters = len(scene.get("characters", [])) == 0
+        has_no_dialogue = scene.get("dialogue_count", 0) == 0
+        is_very_short = len(raw.strip()) < 300
+
+        # Check for title page keywords in content
+        has_title_keyword = any(kw in combined for kw in self.TITLE_PAGE_KEYWORDS)
+
+        # A scene is a title scene if it has no characters, no dialogue,
+        # is very short, AND contains at least one title-page keyword
+        return has_no_characters and has_no_dialogue and is_very_short and has_title_keyword
+
+    def _remove_title_scenes(self, scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Removes leading title/cover page scenes from the scene list.
+        Only checks the first 1-2 scenes to avoid removing real short scenes.
+        """
+        if not scenes:
+            return scenes
+
+        # Only strip title scenes from the very beginning (first scene only)
+        removed = 0
+        while scenes and removed < 2 and self._is_title_scene(scenes[0]):
+            logger.info(f"Removing title/cover page scene: '{scenes[0].get('heading', '')}' — not a real scene.")
+            scenes = scenes[1:]
+            removed += 1
+
+        return scenes
+
+    def _renumber_scenes(self, scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Renumbers all scenes sequentially starting from 1.
+        Ensures scene_number and sequence_order are consistent.
+        """
+        for new_num, sc in enumerate(scenes, start=1):
+            sc["scene_number"] = new_num
         return scenes
 
     def _calculate_page_and_duration(self, scene: Dict[str, Any], total_lines: int):
