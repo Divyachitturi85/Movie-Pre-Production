@@ -371,7 +371,7 @@ class DocumentService:
             f"<b>{stats.get('location_count', 0)} distinct locations</b>, requiring <b>{stats.get('character_count', 0)} characters</b>. "
             f"The shooting schedule was mathematically optimized using Google OR-Tools CP-SAT, achieving an optimal schedule of "
             f"<b>{schedule.get('total_days', 0)} shooting days</b> with <b>{schedule.get('total_company_moves', 0)} company moves</b>. "
-            f"Estimated production budget: <b>${budget.get('grand_total', 0.0):,.2f}</b> ({budget.get('disclaimer', '')})."
+            f"Estimated production budget: <b>INR {budget.get('grand_total', 0.0):,.2f}</b> ({budget.get('disclaimer', '')})."
         )
         story.append(Paragraph(summary_text, self.body_style))
         story.append(Spacer(1, 10))
@@ -380,10 +380,10 @@ class DocumentService:
         metrics_data = [
             ["Metric", "Value", "Metric", "Value"],
             ["Total Scenes", str(stats.get('scene_count', 0)), "Shooting Days", str(schedule.get('total_days', 0))],
-            ["Cast Members", str(stats.get('character_count', 0)), "Est. Budget Subtotal", f"${budget.get('subtotal', 0.0):,.2f}"],
-            ["Locations", str(stats.get('location_count', 0)), "Contingency (10%)", f"${budget.get('contingency_amount', 0.0):,.2f}"],
-            ["Total Props", str(stats.get('props_count', 0)), "Taxes & Permits (8%)", f"${budget.get('tax_amount', 0.0):,.2f}"],
-            ["Costumes / Wardrobe", str(stats.get('costumes_count', 0)), "Grand Total Budget", f"${budget.get('grand_total', 0.0):,.2f}"]
+            ["Cast Members", str(stats.get('character_count', 0)), "Est. Budget Subtotal", f"INR {budget.get('subtotal', 0.0):,.2f}"],
+            ["Locations", str(stats.get('location_count', 0)), "Contingency (10%)", f"INR {budget.get('contingency_amount', 0.0):,.2f}"],
+            ["Total Props", str(stats.get('props_count', 0)), "Taxes & Permits (8%)", f"INR {budget.get('tax_amount', 0.0):,.2f}"],
+            ["Costumes / Wardrobe", str(stats.get('costumes_count', 0)), "Grand Total Budget", f"INR {budget.get('grand_total', 0.0):,.2f}"]
         ]
         t_metrics = Table(metrics_data, colWidths=[130, 140, 130, 140])
         t_metrics.setStyle(TableStyle([
@@ -485,7 +485,7 @@ class DocumentService:
         return buffer.getvalue()
 
     def generate_budget_xlsx(self, budget: Dict[str, Any]) -> bytes:
-        headers = ["Category", "Department", "Code", "Description", "Quantity", "Unit", "Rate ($)", "Days", "Subtotal ($)", "Notes"]
+        headers = ["Category", "Department", "Code", "Description", "Quantity", "Unit", "Rate (INR)", "Days", "Subtotal (INR)", "Notes"]
         rows = []
         for i in budget.get("items", []):
             rows.append([
@@ -590,7 +590,7 @@ class DocumentService:
             ]
             xlsx_loc = self.generate_excel_workbook(
                 "Locations",
-                ["Location Name", "I/E", "D/N", "Scenes Count", "Required Days", "Company Move Required", "Est Cost ($)"],
+                ["Location Name", "I/E", "D/N", "Scenes Count", "Required Days", "Company Move Required", "Est Cost (INR)"],
                 loc_rows
             )
             zip_file.writestr("04_Location_Breakdown.xlsx", xlsx_loc)

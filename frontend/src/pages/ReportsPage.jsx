@@ -146,7 +146,7 @@ export default function ReportsPage() {
             <div className="bg-[#182235] p-3.5 rounded-xl border border-[#222E42]">
               <span className="text-slate-400 text-[11px] block">Grand Total Budget</span>
               <span className="text-lg font-bold text-amber-400 font-mono">
-                ${report.budget_summary?.grand_total?.toLocaleString()}
+                ₹{report.budget_summary?.grand_total?.toLocaleString('en-IN')}
               </span>
             </div>
           </div>

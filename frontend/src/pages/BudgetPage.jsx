@@ -108,6 +108,9 @@ export default function BudgetPage() {
             <span className="text-[10px] uppercase font-bold tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">
               Movie Magic Budgeting-Compatible
             </span>
+            <span className="text-[10px] uppercase font-bold tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+              INR (₹) Indian Rupees
+            </span>
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight mt-1">
             Production Budget Estimation
@@ -142,7 +145,7 @@ export default function BudgetPage() {
           <div className="bg-[#131B2A] border border-[#27354F] p-4 rounded-xl">
             <span className="text-[11px] text-slate-400 block">Subtotal</span>
             <span className="text-2xl font-black text-white font-mono">
-              ${budget.subtotal?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ₹{budget.subtotal?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
             <span className="text-[10px] text-slate-400 block mt-0.5">ATL + BTL Direct Costs</span>
           </div>
@@ -152,7 +155,7 @@ export default function BudgetPage() {
               Contingency ({Math.round(budget.contingency_rate * 100)}%)
             </span>
             <span className="text-2xl font-black text-amber-400 font-mono">
-              ${budget.contingency_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ₹{budget.contingency_amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
             <span className="text-[10px] text-slate-400 block mt-0.5">Unforeseen production variance</span>
           </div>
@@ -162,7 +165,7 @@ export default function BudgetPage() {
               Taxes & Permits ({Math.round(budget.tax_rate * 100)}%)
             </span>
             <span className="text-2xl font-black text-cyan-400 font-mono">
-              ${budget.tax_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ₹{budget.tax_amount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
             <span className="text-[10px] text-slate-400 block mt-0.5">Permits, insurance, tax</span>
           </div>
@@ -170,9 +173,9 @@ export default function BudgetPage() {
           <div className="bg-[#131B2A] border border-amber-500/30 p-4 rounded-xl shadow-lg bg-gradient-to-tr from-[#131B2A] to-[#1F293D]">
             <span className="text-[11px] text-amber-400 font-bold block uppercase tracking-wider">Grand Total Budget</span>
             <span className="text-2xl font-black text-white font-mono">
-              ${budget.grand_total?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ₹{budget.grand_total?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
-            <span className="text-[10px] text-emerald-400 font-medium block mt-0.5">Complete Production Estimate</span>
+            <span className="text-[10px] text-emerald-400 font-medium block mt-0.5">Complete Production Estimate (INR)</span>
           </div>
         </div>
       )}
@@ -184,7 +187,7 @@ export default function BudgetPage() {
             Above-The-Line (ATL) — Creative & Principal Talent
           </span>
           <span className="text-xs text-slate-400 font-mono font-bold">
-            ${atlItems.reduce((acc, i) => acc + i.subtotal, 0).toLocaleString()}
+            ₹{atlItems.reduce((acc, i) => acc + i.subtotal, 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </span>
         </div>
 
@@ -197,9 +200,9 @@ export default function BudgetPage() {
                 <th className="py-2.5 px-4">Description</th>
                 <th className="py-2.5 px-4">Qty</th>
                 <th className="py-2.5 px-4">Unit</th>
-                <th className="py-2.5 px-4">Rate ($)</th>
+                <th className="py-2.5 px-4">Rate (₹)</th>
                 <th className="py-2.5 px-4">Days</th>
-                <th className="py-2.5 px-4 text-right">Subtotal ($)</th>
+                <th className="py-2.5 px-4 text-right">Subtotal (₹)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1E293B]">
@@ -237,7 +240,7 @@ export default function BudgetPage() {
                     />
                   </td>
                   <td className="py-2.5 px-4 text-right font-mono font-bold text-amber-400">
-                    ${item.subtotal?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    ₹{item.subtotal?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
               ))}
@@ -253,7 +256,7 @@ export default function BudgetPage() {
             Below-The-Line (BTL) — Crew, Equipment, Locations & Post-Production
           </span>
           <span className="text-xs text-slate-400 font-mono font-bold">
-            ${btlItems.reduce((acc, i) => acc + i.subtotal, 0).toLocaleString()}
+            ₹{btlItems.reduce((acc, i) => acc + i.subtotal, 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </span>
         </div>
 
@@ -266,9 +269,9 @@ export default function BudgetPage() {
                 <th className="py-2.5 px-4">Description</th>
                 <th className="py-2.5 px-4">Qty</th>
                 <th className="py-2.5 px-4">Unit</th>
-                <th className="py-2.5 px-4">Rate ($)</th>
+                <th className="py-2.5 px-4">Rate (₹)</th>
                 <th className="py-2.5 px-4">Days</th>
-                <th className="py-2.5 px-4 text-right">Subtotal ($)</th>
+                <th className="py-2.5 px-4 text-right">Subtotal (₹)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1E293B]">
@@ -306,7 +309,7 @@ export default function BudgetPage() {
                     />
                   </td>
                   <td className="py-2.5 px-4 text-right font-mono font-bold text-cyan-400">
-                    ${item.subtotal?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    ₹{item.subtotal?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
               ))}
@@ -368,7 +371,7 @@ export default function BudgetPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Unit Rate ($)</label>
+                  <label className="block text-slate-400 font-semibold mb-1">Unit Rate (₹)</label>
                   <input
                     type="number"
                     value={newItem.unit_rate}

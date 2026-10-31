@@ -93,7 +93,7 @@ export default function LocationsPage() {
             <div className="pt-3 border-t border-[#222E42] flex items-center justify-between text-xs">
               <span className="text-slate-400">Est. Location Cost:</span>
               <span className="font-bold text-amber-400 font-mono">
-                ${(loc.estimated_cost || 1500).toLocaleString()}
+                ₹{(loc.estimated_cost || 1500).toLocaleString('en-IN')}
               </span>
             </div>
           </div>
