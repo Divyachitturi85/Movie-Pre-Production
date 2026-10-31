@@ -58,11 +58,16 @@ app = FastAPI(
     description="Full-stack AI-Powered Movie Pre-Production Planning & Production Management System",
     lifespan=lifespan
 )
-
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://.*",
+    allow_origins=[
+        "https://movie-preproduction70mm.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ],
+    allow_origin_regex=r"^https:\/\/movie-preproduction70mm.*\.vercel\.app$",  # Also covers any Vercel preview deploys
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
