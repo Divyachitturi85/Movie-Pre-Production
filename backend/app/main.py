@@ -35,6 +35,20 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database schema...")
     Base.metadata.create_all(bind=engine)
     logger.info("Database schema initialized successfully.")
+    
+    # Auto-seed demo project if database has 0 projects
+    try:
+        from app.core.database import SessionLocal
+        from app.models.project import Project
+        from app.services.demo_service import DemoService
+        with SessionLocal() as db:
+            if db.query(Project).count() == 0:
+                logger.info("Database is empty. Auto-seeding Project Aurora demo spec...")
+                DemoService().load_demo_project(db)
+                logger.info("Project Aurora auto-seeded successfully!")
+    except Exception as e:
+        logger.warning(f"Could not auto-seed demo project: {e}")
+        
     yield
     logger.info("Shutting down backend server.")
 
