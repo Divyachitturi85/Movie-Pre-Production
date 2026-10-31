@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -15,6 +16,8 @@ from app.schemas.location import LocationResponse
 from app.schemas.production_element import ProductionElementResponse, ProductionElementCreate
 from app.services.nlp_service import NLPService
 from app.services.complexity_service import ComplexityService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["Analysis & Breakdown"])
 
@@ -174,6 +177,15 @@ def run_nlp_analysis(project_id: int, db: Session = Depends(get_db)):
 
 @router.get("/scenes", response_model=List[SceneResponse])
 def get_scenes(project_id: int, db: Session = Depends(get_db)):
+    # Auto-run analysis if project has scenes but 0 production elements exist
+    scene_count = db.query(Scene).filter(Scene.project_id == project_id).count()
+    element_count = db.query(ProductionElement).filter(ProductionElement.project_id == project_id).count()
+    if scene_count > 0 and element_count == 0:
+        try:
+            run_nlp_analysis(project_id, db)
+        except Exception as e:
+            logger.warning(f"Auto-analysis on get_scenes failed: {e}")
+
     scenes = db.query(Scene).filter(Scene.project_id == project_id).order_by(Scene.scene_number).all()
     return scenes
 
@@ -220,6 +232,15 @@ def get_elements(
     scene_id: Optional[int] = Query(None),
     db: Session = Depends(get_db)
 ):
+    # Auto-run analysis if project has scenes but 0 production elements exist
+    scene_count = db.query(Scene).filter(Scene.project_id == project_id).count()
+    element_count = db.query(ProductionElement).filter(ProductionElement.project_id == project_id).count()
+    if scene_count > 0 and element_count == 0:
+        try:
+            run_nlp_analysis(project_id, db)
+        except Exception as e:
+            logger.warning(f"Auto-analysis on get_elements failed: {e}")
+
     query = db.query(ProductionElement).filter(ProductionElement.project_id == project_id)
     if category:
         query = query.filter(ProductionElement.category == category.upper())

@@ -14,7 +14,10 @@ import {
   Clock,
   Plus,
   Tag,
-  AlertCircle
+  AlertCircle,
+  RefreshCw,
+  Sliders,
+  CheckCircle2
 } from 'lucide-react';
 import { analysisService } from '../services/api';
 
@@ -22,7 +25,7 @@ const CATEGORY_COLORS = {
   PROP: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
   COSTUME: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
   VEHICLE: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-  EQUIPMENT: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+  EQUIPMENT: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30',
   VFX: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
   SFX: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
   WEAPON: 'bg-red-500/10 text-red-400 border-red-500/30',
@@ -36,8 +39,10 @@ export default function ScriptBreakdownPage() {
   const [scenes, setScenes] = useState([]);
   const [elements, setElements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const [search, setSearch] = useState('');
   const [complexityFilter, setComplexityFilter] = useState('ALL');
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState('ALL'); // 'ALL', 'EQUIPMENT', 'PROPS'
 
   useEffect(() => {
     if (!currentProject?.id) return;
@@ -57,6 +62,20 @@ export default function ScriptBreakdownPage() {
       console.error('Failed to load breakdown:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReAnalyze = async () => {
+    if (!currentProject?.id) return;
+    setReanalyzing(true);
+    try {
+      await analysisService.runAnalysis(currentProject.id);
+      await loadBreakdownData();
+    } catch (err) {
+      console.error('Re-analysis failed:', err);
+      alert('Failed to re-run breakdown analysis.');
+    } finally {
+      setReanalyzing(false);
     }
   };
 
@@ -92,11 +111,21 @@ export default function ScriptBreakdownPage() {
             Scene-by-Scene Script Breakdown Sheets
           </h1>
           <p className="text-xs text-slate-400">
-            Categorized production elements, cast requirements, and complexity factors extracted via NLP.
+            Categorized production elements, camera/lighting shoot equipment, cast requirements, and complexity factors.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleReAnalyze}
+            disabled={reanalyzing}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition shadow-md disabled:opacity-50"
+            title="Re-extract shoot equipment, props, and complexity for all scenes"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${reanalyzing ? 'animate-spin' : ''}`} />
+            <span>{reanalyzing ? 'Extracting Equipment & Assets...' : 'Re-Run Equipment Breakdown'}</span>
+          </button>
+
           <button
             onClick={() => navigate('/elements')}
             className="flex items-center gap-2 bg-[#1A2438] hover:bg-[#27354F] text-slate-200 border border-[#27354F] px-4 py-2 rounded-xl text-xs font-semibold transition"
@@ -133,18 +162,40 @@ export default function ScriptBreakdownPage() {
             <option value="HIGH">High Complexity</option>
             <option value="VERY HIGH">Very High Complexity</option>
           </select>
+
+          <select
+            value={selectedCategoryTab}
+            onChange={(e) => setSelectedCategoryTab(e.target.value)}
+            className="bg-[#1A2438] border border-[#27354F] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+          >
+            <option value="ALL">Show All Elements</option>
+            <option value="EQUIPMENT">Equipment Only</option>
+            <option value="PROPS">Props & Set Assets Only</option>
+          </select>
         </div>
       </div>
 
       {/* Breakdown Cards Grid */}
-      {filteredScenes.length === 0 ? (
+      {loading ? (
+        <div className="bg-[#131B2A] border border-[#27354F] rounded-2xl p-12 text-center text-xs text-slate-400">
+          <RefreshCw className="w-6 h-6 text-amber-400 animate-spin mx-auto mb-3" />
+          Loading Script Breakdown Sheets & Equipment Packages...
+        </div>
+      ) : filteredScenes.length === 0 ? (
         <div className="bg-[#131B2A] border border-[#27354F] rounded-2xl p-12 text-center text-xs text-slate-400">
           No breakdown scenes match your filter criteria.
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {filteredScenes.map((sc) => {
             const scElements = elementsByScene[sc.id] || [];
+            const equipmentItems = scElements.filter(e => e.category === 'EQUIPMENT');
+            const propAndOtherItems = scElements.filter(e => e.category !== 'EQUIPMENT');
+
+            const displayedEquipment = selectedCategoryTab === 'PROPS' ? [] : equipmentItems;
+            const displayedProps = selectedCategoryTab === 'EQUIPMENT' ? [] : propAndOtherItems;
+            const totalVisible = displayedEquipment.length + displayedProps.length;
+
             return (
               <div
                 key={sc.id}
@@ -179,55 +230,122 @@ export default function ScriptBreakdownPage() {
                 </div>
 
                 {/* Grid of Production Elements */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs">
-                  {/* Action Excerpt */}
-                  <div className="md:col-span-5 bg-[#182235] p-3.5 rounded-xl border border-[#222E42]">
-                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                      Screenplay Context
-                    </div>
-                    <p className="font-screenplay text-[11px] text-slate-300 leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap">
-                      {sc.action_text || sc.raw_content || 'No action description.'}
-                    </p>
-                  </div>
-
-                  {/* Production Elements Pill Badges */}
-                  <div className="md:col-span-7 space-y-3">
-                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Extracted Production Elements ({scElements.length})
-                    </div>
-
-                    {scElements.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {scElements.map((el, i) => {
-                          const badgeColor = CATEGORY_COLORS[el.category] || 'bg-slate-800 text-slate-300 border-slate-700';
-                          return (
-                            <span
-                              key={i}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${badgeColor}`}
-                              title={`${el.category}: ${el.description || el.name} (Source: ${el.extraction_source})`}
-                            >
-                              <span className="font-bold opacity-75 text-[10px]">{el.category}:</span>
-                              <span>{el.name}</span>
-                              <span className="text-[10px] opacity-60 font-mono">
-                                {Math.round((el.confidence || 0.85) * 100)}%
-                              </span>
-                            </span>
-                          );
-                        })}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5 text-xs">
+                  {/* Action Excerpt & Screenplay Context */}
+                  <div className="md:col-span-4 bg-[#182235] p-4 rounded-xl border border-[#222E42] flex flex-col justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                        <span>Screenplay Context</span>
+                        <span className="text-[10px] text-amber-400 font-mono">Scene {sc.scene_number}</span>
                       </div>
-                    ) : (
-                      <p className="text-xs text-slate-500 italic">No special production assets tagged.</p>
-                    )}
+                      <p className="font-screenplay text-[11px] text-slate-300 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap pr-1">
+                        {sc.action_text || sc.raw_content || 'No action description.'}
+                      </p>
+                    </div>
 
                     {/* Complexity Factors Tags */}
                     {sc.complexity_factors && (
-                      <div className="pt-2 border-t border-[#222E42] text-[11px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+                      <div className="pt-3 mt-3 border-t border-[#222E42] text-[10px] text-slate-400 flex flex-wrap gap-x-3 gap-y-1">
                         {Object.entries(sc.complexity_factors).map(([k, v], idx) => (
                           <span key={idx} className="flex items-center gap-1">
                             <span className="text-slate-500">•</span>
                             <span>{typeof v === 'string' ? v : JSON.stringify(v)}</span>
                           </span>
                         ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Production Elements & Equipment Section */}
+                  <div className="md:col-span-8 space-y-4">
+                    <div className="flex items-center justify-between border-b border-[#222E42] pb-2">
+                      <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                        <span>Extracted Production Elements & Shoot Gear ({scElements.length})</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="text-cyan-400 font-bold bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
+                          {equipmentItems.length} Equipment Items
+                        </span>
+                        <span className="text-amber-400 font-bold bg-amber-950/60 border border-amber-800/40 px-2 py-0.5 rounded">
+                          {propAndOtherItems.length} Props & Assets
+                        </span>
+                      </div>
+                    </div>
+
+                    {totalVisible === 0 ? (
+                      <div className="p-4 bg-[#182235] rounded-xl border border-[#222E42] text-center text-xs text-slate-500 italic">
+                        No special production assets tagged for this filter.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* 1. Scene Props, Wardrobe & Physical Assets */}
+                        {displayedProps.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                              <Package className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Scene Props & Assets ({displayedProps.length})</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {displayedProps.map((el, i) => {
+                                const badgeColor = CATEGORY_COLORS[el.category] || 'bg-slate-800 text-slate-300 border-slate-700';
+                                return (
+                                  <span
+                                    key={i}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${badgeColor}`}
+                                    title={`${el.category}: ${el.description || el.name} (Source: ${el.extraction_source})`}
+                                  >
+                                    <span className="font-bold opacity-75 text-[10px]">{el.category}:</span>
+                                    <span>{el.name}</span>
+                                    {el.quantity > 1 && (
+                                      <span className="px-1 py-0.2 rounded bg-amber-900/50 text-[10px] text-amber-200">
+                                        x{el.quantity}
+                                      </span>
+                                    )}
+                                    <span className="text-[10px] opacity-60 font-mono">
+                                      {Math.round((el.confidence || 0.85) * 100)}%
+                                    </span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 2. Start-to-Finish Shoot Equipment Package */}
+                        {displayedEquipment.length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <Camera className="w-3.5 h-3.5 text-cyan-400" />
+                                <span>Shoot Equipment Package - Starting to Ending Gear ({displayedEquipment.length})</span>
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                Camera • Sound • Lighting • Grip • DIT
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto pr-1 bg-[#0F1622]/50 p-2.5 rounded-xl border border-[#222E42]">
+                              {displayedEquipment.map((el, i) => (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold bg-cyan-500/10 text-cyan-300 border-cyan-500/30 hover:border-cyan-400 transition"
+                                  title={`${el.name}\n${el.description}\nQuantity: ${el.quantity || 1}`}
+                                >
+                                  <span className="font-bold opacity-75 text-[10px] text-cyan-400">EQUIPMENT:</span>
+                                  <span>{el.name}</span>
+                                  {el.quantity > 1 && (
+                                    <span className="px-1.5 py-0.2 rounded bg-cyan-900/60 text-[10px] text-cyan-200 font-mono font-bold">
+                                      x{el.quantity}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] opacity-60 font-mono">
+                                    {Math.round((el.confidence || 0.95) * 100)}%
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -1,5 +1,6 @@
 import os
 import shutil
+import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,8 @@ from app.models.explainability import AIExplainabilityRecord
 from app.schemas.script import ScriptResponse, ScriptParseRequest
 from app.services.pdf_service import PDFService
 from app.services.script_parser import ScriptParser
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects/{project_id}/script", tags=["Scripts"])
 
@@ -130,6 +133,13 @@ async def upload_script_pdf(
     db.commit()
     db.refresh(script)
 
+    # Automatically execute AI NLP Breakdown Pipeline & Equipment Extraction
+    from app.api.analysis import run_nlp_analysis
+    try:
+        run_nlp_analysis(project_id, db)
+    except Exception as e:
+        logger.warning(f"Auto-analysis during upload failed: {e}")
+
     return script
 
 @router.get("", response_model=ScriptResponse)
@@ -180,4 +190,12 @@ def reparse_script(
     script.cleaned_text = text_to_parse
     db.commit()
     db.refresh(script)
+
+    # Automatically execute AI NLP Breakdown Pipeline & Equipment Extraction
+    from app.api.analysis import run_nlp_analysis
+    try:
+        run_nlp_analysis(project_id, db)
+    except Exception as e:
+        logger.warning(f"Auto-analysis during parse failed: {e}")
+
     return script
