@@ -82,20 +82,69 @@ async def upload_script_pdf(
     db.add(script)
 
     # Record AI Explainability for PDF / OCR stage
+    method = extract_result["extraction_method"]
+    char_count = len(extract_result.get("cleaned_text") or "")
+    warnings = extract_result.get("warnings", [])
+
+    if method == "PDF_DIRECT":
+        stage = "PDF_EXTRACTION"
+        ai_method_desc = "PyMuPDF Direct Text Extraction"
+        fallback_used = False
+        fallback_reason = None
+        output_detected = f"Extracted {char_count} characters across {extract_result['page_count']} pages (native digital text layer)."
+    elif method == "OCR_COMPLETE":
+        stage = "OCR"
+        ai_method_desc = "PaddleOCR Optical Character Recognition (Complete)"
+        fallback_used = True
+        fallback_reason = "Scanned raster pages detected; optical character recognition executed on all pages."
+        output_detected = f"Recognized {char_count} characters via PaddleOCR. Mean confidence: {extract_result['ocr_confidence']:.1%}."
+    elif method == "OCR_PARTIAL":
+        stage = "OCR"
+        ai_method_desc = "PaddleOCR Optical Character Recognition (Partial)"
+        fallback_used = True
+        fallback_reason = "Mixed document: optical recognition succeeded on some pages, but others lacked legible text or failed."
+        output_detected = f"Partially recognized {char_count} characters. Mean recognized confidence: {extract_result['ocr_confidence']:.1%}."
+    elif method == "OCR_UNAVAILABLE":
+        stage = "PDF_EXTRACTION"
+        ai_method_desc = "Direct Text Extraction (OCR Engine Unavailable)"
+        fallback_used = True
+        fallback_reason = "Scanned raster pages detected, but PaddleOCR is not installed in this deployment tier."
+        if char_count > 0:
+            output_detected = f"Extracted {char_count} characters from existing text layers. Scanned raster pages yielded no text."
+        else:
+            output_detected = "No text extracted. Document contains scanned raster pages, but optical recognition engine is unavailable."
+    elif method == "OCR_FAILED":
+        stage = "OCR"
+        ai_method_desc = "PaddleOCR Optical Recognition (Attempted - Failed)"
+        fallback_used = True
+        fallback_reason = "Optical recognition attempted on scanned pages but failed to recognize legible text."
+        if char_count > 0:
+            output_detected = f"Extracted {char_count} characters. OCR could not recognize text on scanned pages."
+        else:
+            output_detected = "No text recognized. Optical recognition failed to detect legible text on scanned pages."
+    else:
+        stage = "PDF_EXTRACTION"
+        ai_method_desc = f"PDF Ingestion ({method})"
+        fallback_used = False
+        fallback_reason = None
+        output_detected = f"Extracted {char_count} characters."
+
     explain_rec = AIExplainabilityRecord(
         project_id=project_id,
-        stage="OCR" if extract_result["extraction_method"] == "PADDLE_OCR" else "PDF_EXTRACTION",
+        stage=stage,
         target_entity=f"Script: {filename}",
         input_data=f"PDF File: {filename} ({file_size} bytes, {extract_result['page_count']} pages)",
-        ai_method="PaddleOCR Engine (Scanned PDF Fallback)" if extract_result["extraction_method"] == "PADDLE_OCR" else "PyMuPDF Direct Text Extraction",
-        output_detected=f"Extracted {len(extract_result['cleaned_text'])} characters. Quality score: {extract_result['quality_score']:.2f}",
+        ai_method=ai_method_desc,
+        output_detected=output_detected,
         confidence=extract_result["ocr_confidence"],
-        fallback_used=(extract_result["extraction_method"] == "PADDLE_OCR"),
-        fallback_reason="Low digital text density detected in PDF pages; switched to high-resolution OCR" if extract_result["extraction_method"] == "PADDLE_OCR" else None,
+        fallback_used=fallback_used,
+        fallback_reason=fallback_reason,
         details={
             "page_count": extract_result["page_count"],
             "quality_score": extract_result["quality_score"],
-            "extraction_method": extract_result["extraction_method"]
+            "extraction_method": method,
+            "warnings": warnings,
+            "page_details": extract_result.get("page_details", [])
         }
     )
     db.add(explain_rec)
