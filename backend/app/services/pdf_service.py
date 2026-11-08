@@ -18,14 +18,15 @@ class PDFService:
         self._ocr_engine = None
 
     def _get_ocr_engine(self):
-        """Lazy load PaddleOCR engine with optical fallback to prevent remote network stalls"""
+        """Lazy load PaddleOCR engine with graceful unavailable fallback for memory-constrained cloud tiers"""
         if self._ocr_engine is None:
             try:
-                import paddle
-                logger.info(f"Paddle framework detected (Paddle version: {paddle.__version__}). Optical recognition pipeline ready.")
+                from paddleocr import PaddleOCR
+                self._ocr_engine = PaddleOCR(use_angle_cls=True, lang=self.ocr_lang, show_log=False)
+                logger.info("PaddleOCR engine initialized successfully.")
             except Exception as e:
-                logger.warning(f"Paddle framework not available: {e}")
-            self._ocr_engine = "FALLBACK"
+                logger.warning(f"PaddleOCR engine not available: {e}. Fallback mode active.")
+                self._ocr_engine = "UNAVAILABLE"
         return self._ocr_engine
 
     def assess_text_quality(self, text: str, page_count: int) -> float:
@@ -66,105 +67,165 @@ class PDFService:
     def extract_text(self, file_path: str) -> Dict[str, Any]:
         """
         Main extraction pipeline:
-        1. Try normal text extraction using PyMuPDF.
-        2. Assess text quality.
-        3. If quality < 0.35, fallback to OCR.
-        4. Clean text and return complete record.
+        1. Inspect each page with PyMuPDF for native direct text.
+        2. For pages with low or missing text, attempt PaddleOCR if available.
+        3. Track extraction outcome, recognized text, and confidence per page.
+        4. Assemble cleaned extracted text from actual recognized content ONLY (no fabricated dialogue/scenes).
+        5. Return explicit extraction status, warnings, and per-page metrics.
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
         doc = pymupdf.open(file_path)
         page_count = len(doc)
-        raw_text_pages = []
+        ocr_engine = None
 
-        for page_num in range(page_count):
-            page = doc[page_num]
-            text = page.get_text("text")
-            raw_text_pages.append(text)
+        page_records = []
+        warnings = []
+        all_ocr_confidences = []
 
-        combined_raw = "\n".join(raw_text_pages)
-        quality_score = self.assess_text_quality(combined_raw, page_count)
+        for page_idx in range(page_count):
+            page = doc[page_idx]
+            page_num = page_idx + 1
+            direct_text = (page.get_text("text") or "").strip()
 
-        logger.info(f"Direct text extraction completed. Pages: {page_count}, Quality score: {quality_score:.2f}")
+            page_quality = self.assess_text_quality(direct_text, 1)
+            needs_ocr = page_quality < 0.35 or len(direct_text) < 40
 
-        # Determine if OCR fallback is needed
-        if quality_score < 0.35 or len(combined_raw.strip()) < 100:
-            logger.info("Direct text extraction quality is low; activating PaddleOCR fallback pipeline...")
-            ocr_text, confidence = self._run_ocr_pipeline(doc)
-            extraction_method = "PADDLE_OCR"
-            final_raw = ocr_text if len(ocr_text.strip()) > len(combined_raw.strip()) else combined_raw
-            final_confidence = confidence
-        else:
-            extraction_method = "PDF_DIRECT"
-            final_raw = combined_raw
-            final_confidence = 1.0
+            page_extracted_text = ""
+            page_method = "PDF_DIRECT"
+            page_confidence = 1.0
+
+            if not needs_ocr:
+                # High quality native digital text layer on this page
+                page_extracted_text = direct_text
+                page_method = "PDF_DIRECT"
+                page_confidence = 1.0
+            else:
+                # Page has low or missing digital text: attempt optical recognition if engine available
+                if ocr_engine is None:
+                    ocr_engine = self._get_ocr_engine()
+
+                if ocr_engine not in (None, "UNAVAILABLE", "FALLBACK"):
+                    ocr_lines, confs, ocr_ok = self._ocr_page(page, ocr_engine)
+                    if ocr_ok and ocr_lines:
+                        page_extracted_text = "\n".join(ocr_lines)
+                        page_method = "OCR_SUCCESS"
+                        page_confidence = round(sum(confs) / max(1, len(confs)), 3)
+                        all_ocr_confidences.extend(confs)
+                    else:
+                        # OCR engine attempted but recognized no legible text on this page
+                        if direct_text:
+                            page_extracted_text = direct_text
+                            page_method = "PDF_DIRECT"
+                            page_confidence = round(page_quality, 2)
+                            warnings.append(f"Page {page_num}: OCR recognized no text; retained low-density digital text.")
+                        else:
+                            page_extracted_text = ""
+                            page_method = "OCR_FAILED"
+                            page_confidence = 0.0
+                            warnings.append(f"Page {page_num}: Scanned page detected, but optical recognition failed to detect text.")
+                else:
+                    # OCR engine is unavailable in this deployment tier
+                    if direct_text:
+                        page_extracted_text = direct_text
+                        page_method = "PDF_DIRECT"
+                        page_confidence = round(page_quality, 2)
+                        warnings.append(f"Page {page_num}: Low digital text density detected and OCR engine is unavailable.")
+                    else:
+                        page_extracted_text = ""
+                        page_method = "OCR_UNAVAILABLE"
+                        page_confidence = 0.0
+                        warnings.append(f"Page {page_num}: Scanned raster image without text layer; OCR engine is unavailable in this deployment tier.")
+
+            page_records.append({
+                "page_number": page_num,
+                "method": page_method,
+                "confidence": page_confidence,
+                "text_length": len(page_extracted_text),
+                "has_text": bool(page_extracted_text.strip()),
+                "text": page_extracted_text
+            })
 
         doc.close()
 
-        cleaned = self.clean_screenplay_text(final_raw)
+        # Build document-level text by preserving actual extracted text from all pages (NO fabricated content)
+        valid_pages_text = [p["text"] for p in page_records if p["text"]]
+        combined_raw = "\n\n".join(valid_pages_text) if valid_pages_text else ""
+        cleaned = self.clean_screenplay_text(combined_raw) if combined_raw else ""
+        doc_quality = self.assess_text_quality(cleaned, page_count)
+
+        # Determine document-level extraction status
+        ocr_success_pages = [p for p in page_records if p["method"] == "OCR_SUCCESS"]
+        ocr_failed_pages = [p for p in page_records if p["method"] == "OCR_FAILED"]
+        ocr_unavail_pages = [p for p in page_records if p["method"] == "OCR_UNAVAILABLE"]
+        direct_pages = [p for p in page_records if p["method"] == "PDF_DIRECT"]
+        scanned_pages_count = len(ocr_success_pages) + len(ocr_failed_pages) + len(ocr_unavail_pages)
+
+        if scanned_pages_count == 0:
+            doc_method = "PDF_DIRECT"
+            doc_confidence = 1.0
+        elif len(ocr_success_pages) == page_count:
+            doc_method = "OCR_COMPLETE"
+            doc_confidence = round(sum(all_ocr_confidences) / max(1, len(all_ocr_confidences)), 3) if all_ocr_confidences else 0.0
+        elif len(ocr_success_pages) > 0:
+            doc_method = "OCR_PARTIAL"
+            doc_confidence = round(sum(all_ocr_confidences) / max(1, len(all_ocr_confidences)), 3) if all_ocr_confidences else 0.0
+        elif len(ocr_unavail_pages) > 0:
+            doc_method = "OCR_UNAVAILABLE"
+            doc_confidence = 0.0
+        elif len(ocr_failed_pages) > 0:
+            doc_method = "OCR_FAILED"
+            doc_confidence = 0.0
+        else:
+            doc_method = "PDF_DIRECT"
+            doc_confidence = 1.0
+
+        if not cleaned:
+            warnings.append("No readable screenplay text could be extracted from this document.")
 
         return {
             "page_count": page_count,
-            "extraction_method": extraction_method,
-            "ocr_confidence": final_confidence,
-            "quality_score": quality_score,
-            "raw_text": final_raw,
-            "cleaned_text": cleaned
+            "extraction_method": doc_method,
+            "ocr_confidence": doc_confidence,
+            "quality_score": doc_quality,
+            "raw_text": combined_raw,
+            "cleaned_text": cleaned,
+            "warnings": warnings,
+            "page_details": page_records
         }
 
-    def _run_ocr_pipeline(self, doc) -> Tuple[str, float]:
+    def _ocr_page(self, page, ocr_engine) -> Tuple[List[str], List[float], bool]:
         """
-        Renders PDF pages to images and runs PaddleOCR with confidence aggregation.
+        Renders a single PDF page to an RGB raster and executes optical recognition.
+        Returns: (lines, confidences, success_flag)
         """
-        ocr_engine = self._get_ocr_engine()
-        ocr_texts = []
-        confidences = []
-
-        for page_idx in range(len(doc)):
-            page = doc[page_idx]
+        try:
             pix = page.get_pixmap(dpi=150)
             img_bytes = pix.tobytes("png")
             image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
             img_np = np.array(image)
 
-            page_lines = []
-            if ocr_engine != "FALLBACK":
-                try:
-                    try:
-                        result = ocr_engine.ocr(img_np, cls=True)
-                    except Exception:
-                        result = ocr_engine.ocr(img_np)
-                    if result and result[0]:
-                        for line in result[0]:
-                            text = line[1][0]
-                            conf = float(line[1][1])
-                            page_lines.append(text)
-                            confidences.append(conf)
-                except Exception as e:
-                    logger.warning(f"PaddleOCR failed on page {page_idx + 1}: {e}")
+            try:
+                result = ocr_engine.ocr(img_np, cls=True)
+            except Exception:
+                result = ocr_engine.ocr(img_np)
 
-            if not page_lines:
-                # Fallback text if OCR fails or is empty
-                direct_text = page.get_text("text").strip()
-                if direct_text:
-                    page_lines.append(direct_text)
-                    confidences.append(0.70)
-                else:
-                    # Pure image scan: robust optical recognition fallback
-                    fallback_ocr = (
-                        f"SCENE {page_idx + 1}: EXT. SCANNED SCRIPT LOCATION - NIGHT\n"
-                        "[PaddleOCR Optical Stream Extracted from Rasterized Image Layer]\n"
-                        "SARAH\nWe must secure the perimeter before dawn.\n"
-                        "MARCUS\nDeploying tactical sensor drones now."
-                    )
-                    page_lines.append(fallback_ocr)
-                    confidences.append(0.85)
+            lines = []
+            confs = []
+            if result and result[0]:
+                for item in result[0]:
+                    if item and len(item) >= 2 and item[1]:
+                        txt = str(item[1][0]).strip()
+                        c = float(item[1][1])
+                        if txt:
+                            lines.append(txt)
+                            confs.append(c)
 
-            ocr_texts.append("\n".join(page_lines))
-
-        avg_conf = sum(confidences) / max(1, len(confidences))
-        return "\n\n".join(ocr_texts), round(avg_conf, 3)
+            return lines, confs, bool(lines)
+        except Exception as e:
+            logger.warning(f"PaddleOCR recognition failed on page: {e}")
+            return [], [], False
 
     def clean_screenplay_text(self, text: str) -> str:
         """

@@ -1,5 +1,12 @@
 import sys
 import logging
+
+# Guard: Pre-import torch before paddle to prevent OpenMP runtime collision on Windows
+try:
+    import torch
+except Exception:
+    pass
+
 # Lightweight server startup
 
 from contextlib import asynccontextmanager
@@ -58,6 +65,12 @@ app = FastAPI(
     description="Full-stack AI-Powered Movie Pre-Production Planning & Production Management System",
     lifespan=lifespan
 )
+import importlib.util
+
+# Check optional engine module presence without heavy pipeline allocations
+_PADDLEOCR_AVAILABLE = importlib.util.find_spec("paddleocr") is not None
+_TRANSFORMERS_AVAILABLE = importlib.util.find_spec("transformers") is not None
+
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
@@ -66,8 +79,11 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
     ],
-    allow_origin_regex=r"^https:\/\/movie-preproduction70mm.*\.vercel\.app$",  # Also covers any Vercel preview deploys
+    allow_origin_regex=r"^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?|https:\/\/movie-preproduction70mm(-[a-z0-9-]+)?\.vercel\.app)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,9 +108,10 @@ def health_check():
         "system": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "ai_engines": {
-            "paddleocr": "ENABLED",
+            "paddleocr": "ENABLED" if _PADDLEOCR_AVAILABLE else "UNAVAILABLE (Lightweight profile; PyMuPDF direct text active)",
+            "ocr": "PaddleOCR" if _PADDLEOCR_AVAILABLE else "PyMuPDF Direct Text (Lightweight Cloud Profile)",
             "spacy": settings.SPACY_MODEL,
-            "transformers": settings.HF_MODEL_NAME,
+            "transformers": settings.HF_MODEL_NAME if _TRANSFORMERS_AVAILABLE else "UNAVAILABLE (spaCy linguistic & rule-based NER active)",
             "ortools": "CP-SAT"
         }
     }
