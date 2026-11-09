@@ -16,6 +16,12 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
 # Local Database & Logs
 *.db
 *.sqlite

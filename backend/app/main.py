@@ -1,3 +1,4 @@
+import os
 import sys
 import logging
 
@@ -14,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.core.config import settings
+from app.core.config import settings, is_production_environment
 from app.core.database import engine, Base
 import app.models  # Ensures all models are registered with Base
 
@@ -34,28 +35,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger("movie_preprod_backend")
 
-# Ensure database tables exist
-Base.metadata.create_all(bind=engine)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing database schema...")
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database schema initialized successfully.")
-    
-    # Auto-seed demo project if database has 0 projects
     try:
-        from app.core.database import SessionLocal
-        from app.models.project import Project
-        from app.services.demo_service import DemoService
-        with SessionLocal() as db:
-            if db.query(Project).count() == 0:
-                logger.info("Database is empty. Auto-seeding Project Aurora demo spec...")
-                DemoService().load_demo_project(db)
-                logger.info("Project Aurora auto-seeded successfully!")
+        # checkfirst=True ensures existing tables and data are never dropped or overwritten
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+        logger.info("Database schema initialized successfully.")
     except Exception as e:
-        logger.warning(f"Could not auto-seed demo project: {e}")
-        
+        logger.error(f"Database schema initialization encountered an error: {e}")
+
+    # Controlled demo project seeding
+    # Production must NEVER automatically seed or overwrite user data
+    is_prod = is_production_environment()
+    if settings.AUTO_SEED_DEMO and not is_prod:
+        try:
+            from app.core.database import SessionLocal
+            from app.models.project import Project
+            from app.services.demo_service import DemoService
+            with SessionLocal() as db:
+                if db.query(Project).count() == 0:
+                    logger.info("Development database empty and AUTO_SEED_DEMO enabled. Seeding demo project...")
+                    DemoService().load_demo_project(db)
+                    logger.info("Project Aurora auto-seeded successfully!")
+        except Exception as e:
+            logger.warning(f"Could not auto-seed demo project: {e}")
+    else:
+        logger.info("Auto-seeding inactive. Production and user data preserved.")
+
     yield
     logger.info("Shutting down backend server.")
 
@@ -72,18 +79,25 @@ _PADDLEOCR_AVAILABLE = importlib.util.find_spec("paddleocr") is not None
 _TRANSFORMERS_AVAILABLE = importlib.util.find_spec("transformers") is not None
 
 # CORS Configuration
+is_prod = is_production_environment()
+
+cors_origins = list(settings.CORS_ORIGINS)
+if settings.FRONTEND_URL and settings.FRONTEND_URL.strip():
+    cleaned_frontend_url = settings.FRONTEND_URL.strip().rstrip("/")
+    if cleaned_frontend_url not in cors_origins:
+        cors_origins.append(cleaned_frontend_url)
+
+if is_prod:
+    # Production: strictly allow configured Vercel production domain and Vercel preview branches
+    origin_regex = r"^https:\/\/movie-preproduction70mm(-[a-z0-9-]+)?\.vercel\.app$"
+else:
+    # Development: allow localhost and preview branches
+    origin_regex = r"^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?|https:\/\/movie-preproduction70mm(-[a-z0-9-]+)?\.vercel\.app)$"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://movie-preproduction70mm.vercel.app",
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
-    allow_origin_regex=r"^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?|https:\/\/movie-preproduction70mm(-[a-z0-9-]+)?\.vercel\.app)$",
+    allow_origins=cors_origins,
+    allow_origin_regex=origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
