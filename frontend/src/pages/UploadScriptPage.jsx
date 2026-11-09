@@ -40,7 +40,14 @@ export default function UploadScriptPage() {
   };
 
   const handleUpload = async () => {
-    if (!file || !currentProject?.id) return;
+    if (!currentProject?.id) {
+      setError('No active project selected. Please select or create a project from the top bar before uploading a screenplay.');
+      return;
+    }
+    if (!file) {
+      setError('Please select a screenplay PDF file to upload.');
+      return;
+    }
     setUploading(true);
     setError(null);
     try {
@@ -56,7 +63,14 @@ export default function UploadScriptPage() {
   };
 
   const handleParsePasted = async () => {
-    if (!pastedText.trim() || !currentProject?.id) return;
+    if (!currentProject?.id) {
+      setError('No active project selected. Please select or create a project from the top bar before parsing screenplay text.');
+      return;
+    }
+    if (!pastedText.trim()) {
+      setError('Please paste screenplay text to parse.');
+      return;
+    }
     setUploading(true);
     setError(null);
     try {
@@ -72,7 +86,10 @@ export default function UploadScriptPage() {
   };
 
   const handleRunAnalysis = async () => {
-    if (!currentProject?.id) return;
+    if (!currentProject?.id) {
+      setError('No active project selected. Please select or create a project.');
+      return;
+    }
     setAnalyzing(true);
     try {
       await analysisService.runAnalysis(currentProject.id);

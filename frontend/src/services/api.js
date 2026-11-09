@@ -6,7 +6,7 @@ const getBaseUrl = () => {
     return '/api';
   }
   // In production (Vercel), always call the live Render backend directly
-  const url = (import.meta.env.VITE_API_BASE_URL || 'https://movie-pre-production.onrender.com/api').trim().replace(/\/+$/, '');
+  const url = (import.meta.env.VITE_API_BASE_URL || 'https://movie-pre-production-gi77.onrender.com/api').trim().replace(/\/+$/, '');
   if (!url.endsWith('/api')) {
     return `${url}/api`;
   }

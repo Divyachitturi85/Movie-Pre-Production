@@ -5,7 +5,7 @@
       "destination": "https://movie-pre-production-gi77.onrender.com/api/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
