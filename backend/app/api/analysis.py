@@ -18,6 +18,7 @@ from app.schemas.production_element import ProductionElementResponse, Production
 from app.services.nlp_service import NLPService
 from app.services.complexity_service import ComplexityService
 from app.services.character_service import CharacterService, BLACKLIST, STANDALONE_TITLES
+from app.services.location_service import LocationService
 
 logger = logging.getLogger(__name__)
 
@@ -153,10 +154,19 @@ def run_nlp_analysis(project_id: int, db: Session = Depends(get_db)):
             if c_name in scene_speakers or any(alias_map.get(sp) == c_name for sp in scene_speakers):
                 stat["dialogues"] += 2
 
-        # Aggregate Locations
-        loc_name = sc.location_name or "MAIN SET"
-        l_stat = location_stats.setdefault(loc_name, {"scenes": [], "ie": sc.interior_exterior, "dn": sc.time_of_day})
-        l_stat["scenes"].append(sc.scene_number)
+        # Aggregate Locations (resolving aliases, inversions, and duplicates to canonical physical sets)
+        raw_loc = sc.location_name or "MAIN SET"
+        canonical_loc = LocationService.canonicalize_location_name(raw_loc, sc.interior_exterior)
+        if not LocationService.is_false_location(canonical_loc):
+            l_stat = location_stats.setdefault(
+                canonical_loc,
+                {"scenes": set(), "ie_set": set(), "dn_set": set()}
+            )
+            l_stat["scenes"].add(sc.scene_number)
+            if sc.interior_exterior:
+                l_stat["ie_set"].add(sc.interior_exterior.upper())
+            if sc.time_of_day:
+                l_stat["dn_set"].add(sc.time_of_day.upper())
 
     # Save resolved canonical Characters (purging non-characters, aliases, and titles)
     resolved_char_stats = CharacterService.resolve_character_stats(character_stats)
@@ -183,19 +193,52 @@ def run_nlp_analysis(project_id: int, db: Session = Depends(get_db)):
         )
         db.add(c_mod)
 
-    # Save aggregated Locations
+    # Save aggregated Locations with realistic, dynamic cost estimates
     for loc_name, l_stat in location_stats.items():
+        sc_list = sorted(list(l_stat["scenes"]))
+        sc_cnt = len(sc_list)
+        req_days = max(1, (sc_cnt + 2) // 3)
+        move_req = sc_cnt < 3
+
+        ie_set = l_stat.get("ie_set", set())
+        dn_set = l_stat.get("dn_set", set())
+        if "EXT" in ie_set and "INT" not in ie_set:
+            ie = "EXT"
+        elif "INT" in ie_set and "EXT" in ie_set:
+            ie = "INT/EXT"
+        else:
+            ie = "EXT" if "GATE" in loc_name or "ROAD" in loc_name else "INT"
+
+        has_night = any("NIGHT" in d or "EVENING" in d for d in dn_set)
+        has_day = any("DAY" in d or "MORNING" in d for d in dn_set)
+        if has_night and has_day:
+            dn = "DAY / NIGHT"
+        elif has_night:
+            dn = "NIGHT"
+        else:
+            dn = "DAY"
+
+        calc_cost = LocationService.calculate_location_cost(
+            name=loc_name,
+            interior_exterior=ie,
+            day_night=dn,
+            scene_count=sc_cnt,
+            required_days=req_days,
+            company_move_required=move_req
+        )
+        desc = LocationService.get_location_description(loc_name, ie)
+
         loc_mod = Location(
             project_id=project_id,
             name=loc_name,
-            interior_exterior=l_stat["ie"],
-            day_night=l_stat["dn"],
-            scene_count=len(l_stat["scenes"]),
-            required_days=max(1, (len(l_stat["scenes"]) + 2) // 3),
-            company_move_required=len(l_stat["scenes"]) < 3,
-            estimated_cost=2000.0 if "EXT" in l_stat["ie"] else 1200.0,
-            address_or_description=f"Studio Stage / Practical Location - {loc_name}",
-            scene_ids=l_stat["scenes"]
+            interior_exterior=ie,
+            day_night=dn,
+            scene_count=sc_cnt,
+            required_days=req_days,
+            company_move_required=move_req,
+            estimated_cost=calc_cost,
+            address_or_description=desc,
+            scene_ids=sc_list
         )
         db.add(loc_mod)
 
@@ -259,7 +302,62 @@ def update_character(project_id: int, char_id: int, payload: CharacterUpdate, db
 @router.get("/locations", response_model=List[LocationResponse])
 def get_locations(project_id: int, db: Session = Depends(get_db)):
     locations = db.query(Location).filter(Location.project_id == project_id).order_by(Location.scene_count.desc()).all()
-    return locations
+    
+    # Ensure canonical grouping so duplicates never leak to the client
+    canonical_groups = {}
+    for loc in locations:
+        c_name = LocationService.canonicalize_location_name(loc.name, loc.interior_exterior)
+        if c_name not in canonical_groups:
+            canonical_groups[c_name] = {
+                "id": loc.id,
+                "project_id": loc.project_id,
+                "name": c_name,
+                "interior_exterior": loc.interior_exterior,
+                "day_night": loc.day_night,
+                "scene_ids": set(loc.scene_ids or []),
+                "required_days": loc.required_days,
+                "company_move_required": loc.company_move_required,
+                "estimated_cost": loc.estimated_cost,
+                "address_or_description": loc.address_or_description,
+                "notes": loc.notes,
+                "created_at": loc.created_at
+            }
+        else:
+            g = canonical_groups[c_name]
+            g["scene_ids"].update(loc.scene_ids or [])
+            g["estimated_cost"] = max(g["estimated_cost"], loc.estimated_cost)
+            if loc.interior_exterior == "EXT" or "EXT" in (loc.interior_exterior or ""):
+                g["interior_exterior"] = "EXT"
+
+    results = []
+    for g in canonical_groups.values():
+        sc_list = sorted(list(g["scene_ids"]))
+        sc_cnt = len(sc_list)
+        req_days = max(1, (sc_cnt + 2) // 3)
+        loc_resp = LocationResponse(
+            id=g["id"],
+            project_id=g["project_id"],
+            name=g["name"],
+            interior_exterior=g["interior_exterior"],
+            day_night=g["day_night"],
+            scene_count=sc_cnt,
+            required_days=req_days,
+            company_move_required=(sc_cnt < 3),
+            estimated_cost=g["estimated_cost"],
+            address_or_description=LocationService.get_location_description(g["name"], g["interior_exterior"]),
+            scene_ids=sc_list,
+            created_at=g["created_at"],
+            specifications=LocationService.generate_specifications(
+                g["name"],
+                g["interior_exterior"],
+                g["day_night"],
+                g["estimated_cost"]
+            )
+        )
+        results.append(loc_resp)
+
+    results.sort(key=lambda x: x.scene_count, reverse=True)
+    return results
 
 @router.get("/elements", response_model=List[ProductionElementResponse])
 def get_elements(

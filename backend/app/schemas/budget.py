@@ -11,8 +11,10 @@ class BudgetItemResponse(BaseModel):
     quantity: float
     unit: str
     unit_rate: float
+    actual_unit_rate: Optional[float] = None
     days_count: float
     subtotal: float
+    actual_subtotal: Optional[float] = None
     is_custom: int
     notes: Optional[str] = None
 
@@ -27,6 +29,7 @@ class BudgetItemUpdate(BaseModel):
     quantity: Optional[float] = None
     unit: Optional[str] = None
     unit_rate: Optional[float] = None
+    actual_unit_rate: Optional[float] = None
     days_count: Optional[float] = None
     notes: Optional[str] = None
 
@@ -35,11 +38,17 @@ class BudgetResponse(BaseModel):
     project_id: int
     currency: str
     subtotal: float
+    actual_subtotal: Optional[float] = None
     contingency_rate: float
     contingency_amount: float
+    actual_contingency_amount: Optional[float] = None
     tax_rate: float
     tax_amount: float
+    actual_tax_amount: Optional[float] = None
     grand_total: float
+    actual_grand_total: Optional[float] = None
+    savings_amount: Optional[float] = None
+    savings_percentage: Optional[float] = None
     status: str
     disclaimer: str
     notes: Optional[str] = None

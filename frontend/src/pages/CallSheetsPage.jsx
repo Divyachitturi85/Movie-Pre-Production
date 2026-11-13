@@ -12,7 +12,8 @@ import {
   Download,
   Users,
   RefreshCw,
-  FileText
+  FileText,
+  FileSpreadsheet
 } from 'lucide-react';
 import { documentService } from '../services/api';
 
@@ -139,22 +140,34 @@ export default function CallSheetsPage() {
                     <p className="text-xs text-slate-400 font-mono">{selectedSheet.shoot_date}</p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] text-slate-400 font-semibold mr-1 hidden sm:inline">Export Call Sheet:</span>
                     <a
                       href={documentService.getCallSheetPdfUrl(currentProject.id, selectedSheet.id)}
-                      download
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition"
+                      download={`CallSheet_Day_${selectedSheet.day_number}.pdf`}
+                      title="Download Call Sheet as High-Clarity PDF"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition shadow-sm hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <FileText className="w-3.5 h-3.5 text-rose-400" />
                       <span>PDF</span>
                     </a>
                     <a
                       href={documentService.getCallSheetDocxUrl(currentProject.id, selectedSheet.id)}
-                      download
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-xs font-bold transition"
+                      download={`CallSheet_Day_${selectedSheet.day_number}.docx`}
+                      title="Download Call Sheet as Formatted Microsoft Word (DOCX)"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-xs font-bold transition shadow-sm hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <FileCheck2 className="w-3.5 h-3.5 text-blue-400" />
                       <span>DOCX</span>
+                    </a>
+                    <a
+                      href={documentService.getCallSheetXlsxUrl(currentProject.id, selectedSheet.id)}
+                      download={`CallSheet_Day_${selectedSheet.day_number}.xlsx`}
+                      title="Download Call Sheet as Styled Excel Spreadsheet (XLSX)"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>EXCEL (.XLSX)</span>
                     </a>
                   </div>
                 </div>
@@ -230,35 +243,63 @@ export default function CallSheetsPage() {
 
                 {/* Cast Call Times Table */}
                 <div className="space-y-2">
-                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                    Cast Call Times
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      Cast Call Times & Department Logistics
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {selectedSheet.cast_calls?.length || 0} Actors Scheduled Today
+                    </span>
                   </div>
-                  <div className="border border-[#222E42] rounded-xl overflow-hidden">
-                    <table className="w-full text-left text-xs">
+                  <div className="border border-[#222E42] rounded-xl overflow-hidden overflow-x-auto">
+                    <table className="w-full text-left text-xs min-w-[760px]">
                       <thead className="bg-[#182235] text-slate-400 uppercase text-[10px] font-bold">
                         <tr>
-                          <th className="py-2.5 px-3">ID</th>
+                          <th className="py-2.5 px-3">Cast #</th>
                           <th className="py-2.5 px-3">Character</th>
-                          <th className="py-2.5 px-3">Actor</th>
+                          <th className="py-2.5 px-3">Actor Name</th>
+                          <th className="py-2.5 px-3">Scenes Today</th>
                           <th className="py-2.5 px-3">Pickup</th>
                           <th className="py-2.5 px-3">H/MU</th>
+                          <th className="py-2.5 px-3">Wardrobe</th>
                           <th className="py-2.5 px-3">On Set</th>
                           <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3">Notes</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#1E293B]">
                         {selectedSheet.cast_calls?.map((c, i) => (
                           <tr key={i} className="hover:bg-[#182235]/40 transition">
-                            <td className="py-2.5 px-3 font-mono text-slate-400 font-bold">{c.cast_id}</td>
-                            <td className="py-2.5 px-3 font-bold text-white">{c.character_name}</td>
-                            <td className="py-2.5 px-3 text-slate-300">{c.actor_name}</td>
-                            <td className="py-2.5 px-3 font-mono text-slate-400">{c.pickup}</td>
-                            <td className="py-2.5 px-3 font-mono text-slate-400">{c.hair_makeup}</td>
-                            <td className="py-2.5 px-3 font-mono text-emerald-400 font-bold">{c.on_set}</td>
+                            <td className="py-2.5 px-3 font-mono text-amber-400 font-bold">#{c.cast_id}</td>
+                            <td className="py-2.5 px-3 font-bold text-white">
+                              <div className="flex items-center gap-1.5">
+                                <span>{c.character_name}</span>
+                                {c.role && (
+                                  <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                                    {c.role}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-cyan-200 font-semibold">{c.actor_name}</td>
                             <td className="py-2.5 px-3">
-                              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold">
-                                {c.status}
+                              <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 text-[10.5px] font-mono font-bold">
+                                {c.scenes_today || 'Today\'s Scenes'}
                               </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-300">{c.pickup}</td>
+                            <td className="py-2.5 px-3 font-mono text-slate-300">{c.hair_makeup}</td>
+                            <td className="py-2.5 px-3 text-slate-300 text-[11px] truncate max-w-[130px]" title={c.wardrobe}>
+                              {c.wardrobe || 'Production Wardrobe'}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-emerald-400 font-black text-sm">{c.on_set}</td>
+                            <td className="py-2.5 px-3">
+                              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                                {c.status || 'CALLED'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-400 text-[10.5px] truncate max-w-[140px]" title={c.notes}>
+                              {c.notes || 'Sides attached'}
                             </td>
                           </tr>
                         ))}

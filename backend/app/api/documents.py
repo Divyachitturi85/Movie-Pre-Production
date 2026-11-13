@@ -43,7 +43,18 @@ def generate_call_sheets(project_id: int, db: Session = Depends(get_db)):
     db.query(CallSheet).filter(CallSheet.project_id == project_id).delete()
 
     created_sheets = []
-    char_dicts = [{"name": c.name} for c in characters]
+    char_dicts = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "role": c.role or "SUPPORTING",
+            "scene_ids": c.scene_ids or [],
+            "costume_requirements": c.costume_requirements,
+            "makeup_requirements": c.makeup_requirements,
+            "notes": c.notes
+        }
+        for c in characters
+    ]
     elem_dicts = [{"name": e.name, "category": e.category} for e in elements]
 
     for shoot_day in schedule.shooting_days:
@@ -152,6 +163,13 @@ def export_call_sheet(project_id: int, call_sheet_id: int, fmt: str, db: Session
             content=docx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f"attachment; filename=CallSheet_Day_{cs.day_number}.docx"}
+        )
+    elif fmt.lower() in ["xlsx", "excel"]:
+        xlsx_bytes = doc_svc.generate_call_sheet_xlsx(cs_dict)
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=CallSheet_Day_{cs.day_number}.xlsx"}
         )
     else:
         return cs_dict

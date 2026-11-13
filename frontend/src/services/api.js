@@ -78,6 +78,7 @@ export const documentService = {
   getPackageDownloadUrl: (projectId) => `${api.defaults.baseURL}/projects/${projectId}/export/package`,
   getCallSheetPdfUrl: (projectId, sheetId) => `${api.defaults.baseURL}/projects/${projectId}/call-sheets/${sheetId}/export/pdf`,
   getCallSheetDocxUrl: (projectId, sheetId) => `${api.defaults.baseURL}/projects/${projectId}/call-sheets/${sheetId}/export/docx`,
+  getCallSheetXlsxUrl: (projectId, sheetId) => `${api.defaults.baseURL}/projects/${projectId}/call-sheets/${sheetId}/export/xlsx`,
   getCallbacksPdfUrl: (projectId) => `${api.defaults.baseURL}/projects/${projectId}/callbacks/export/pdf`,
 };
 

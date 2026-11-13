@@ -1,7 +1,10 @@
 import time
 import logging
 from typing import List, Dict, Any, Tuple
-from ortools.sat.python import cp_model
+try:
+    from ortools.sat.python import cp_model
+except (ImportError, OSError):
+    cp_model = None
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,10 @@ class SchedulerService:
         total_scene_mins = sum(s.get("estimated_duration_minutes", 60) for s in scenes)
         min_days_est = max(1, (total_scene_mins + len(scenes) * setup_mins_per_scene) // max_daily_mins + 1)
         max_days = min(len(scenes), int(min_days_est + 5))
+
+        if cp_model is None:
+            logger.warning("OR-Tools CP-SAT unavailable; using greedy heuristic fallback.")
+            return self._greedy_schedule_fallback(scenes, max_daily_mins, setup_mins_per_scene)
 
         model = cp_model.CpModel()
 
@@ -187,7 +194,7 @@ class SchedulerService:
 
     def _build_schedule_result(
         self,
-        solver: cp_model.CpSolver,
+        solver: Any,
         status_str: str,
         solve_time: float,
         scenes: List[Dict[str, Any]],

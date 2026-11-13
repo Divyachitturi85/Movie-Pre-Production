@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
@@ -15,5 +15,7 @@ class LocationResponse(BaseModel):
     address_or_description: Optional[str] = None
     notes: Optional[str] = None
     scene_ids: Optional[List[int]] = []
+    specifications: Optional[Dict[str, str]] = None
 
     model_config = ConfigDict(from_attributes=True)
+

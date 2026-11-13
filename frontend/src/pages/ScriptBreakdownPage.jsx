@@ -175,6 +175,7 @@ export default function ScriptBreakdownPage() {
         </div>
       </div>
 
+
       {/* Breakdown Cards Grid */}
       {loading ? (
         <div className="bg-[#131B2A] border border-[#27354F] rounded-2xl p-12 text-center text-xs text-slate-400">
@@ -196,6 +197,8 @@ export default function ScriptBreakdownPage() {
             const displayedProps = selectedCategoryTab === 'EQUIPMENT' ? [] : propAndOtherItems;
             const totalVisible = displayedEquipment.length + displayedProps.length;
 
+            const isNightScene = (sc.time_of_day || '').toUpperCase().includes('NIGHT') || (sc.time_of_day || '').toUpperCase().includes('EVENING');
+
             return (
               <div
                 key={sc.id}
@@ -203,11 +206,22 @@ export default function ScriptBreakdownPage() {
               >
                 {/* Scene Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#222E42] pb-3 mb-4">
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <span className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-black text-xs">
                       SCENE {sc.scene_number}
                     </span>
                     <h3 className="font-bold text-sm text-white">{sc.heading}</h3>
+
+                    {/* Day vs Night Scene Shoot Indicator */}
+                    {isNightScene ? (
+                      <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold">
+                        <span>🌙 Night Shoot Rig</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                        <span>☀️ Day Shoot Rig</span>
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-3 text-xs">
@@ -288,11 +302,12 @@ export default function ScriptBreakdownPage() {
                             <div className="flex flex-wrap gap-2">
                               {displayedProps.map((el, i) => {
                                 const badgeColor = CATEGORY_COLORS[el.category] || 'bg-slate-800 text-slate-300 border-slate-700';
+                                const confidencePct = Math.round((el.confidence || 0.85) * 100);
                                 return (
                                   <span
                                     key={i}
-                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${badgeColor}`}
-                                    title={`${el.category}: ${el.description || el.name} (Source: ${el.extraction_source})`}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${badgeColor} transition hover:scale-102`}
+                                    title={`${el.category}: ${el.description || el.name}\nAI Extraction Confidence: ${confidencePct}% certainty from screenplay NLP`}
                                   >
                                     <span className="font-bold opacity-75 text-[10px]">{el.category}:</span>
                                     <span>{el.name}</span>
@@ -301,8 +316,11 @@ export default function ScriptBreakdownPage() {
                                         x{el.quantity}
                                       </span>
                                     )}
-                                    <span className="text-[10px] opacity-60 font-mono">
-                                      {Math.round((el.confidence || 0.85) * 100)}%
+                                    <span
+                                      className="text-[10px] opacity-75 font-mono bg-black/30 px-1 rounded"
+                                      title={`AI Detection Confidence: ${confidencePct}%`}
+                                    >
+                                      {confidencePct}%
                                     </span>
                                   </span>
                                 );
@@ -317,32 +335,54 @@ export default function ScriptBreakdownPage() {
                             <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center justify-between">
                               <span className="flex items-center gap-1.5">
                                 <Camera className="w-3.5 h-3.5 text-cyan-400" />
-                                <span>Shoot Equipment Package - Starting to Ending Gear ({displayedEquipment.length})</span>
+                                <span>
+                                  {isNightScene ? 'Night Shoot Equipment Package' : 'Day Shoot Equipment Package'} ({displayedEquipment.length})
+                                </span>
                               </span>
                               <span className="text-[10px] text-slate-400 font-normal">
-                                Camera • Sound • Lighting • Grip • DIT
+                                {isNightScene ? '🌙 Low-Light Optics • Key Spotlights • Generator' : '☀️ Daylight Optics • Sun Silks • Ambient Fill'}
                               </span>
                             </div>
 
-                            <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto pr-1 bg-[#0F1622]/50 p-2.5 rounded-xl border border-[#222E42]">
-                              {displayedEquipment.map((el, i) => (
-                                <span
-                                  key={i}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold bg-cyan-500/10 text-cyan-300 border-cyan-500/30 hover:border-cyan-400 transition"
-                                  title={`${el.name}\n${el.description}\nQuantity: ${el.quantity || 1}`}
-                                >
-                                  <span className="font-bold opacity-75 text-[10px] text-cyan-400">EQUIPMENT:</span>
-                                  <span>{el.name}</span>
-                                  {el.quantity > 1 && (
-                                    <span className="px-1.5 py-0.2 rounded bg-cyan-900/60 text-[10px] text-cyan-200 font-mono font-bold">
-                                      x{el.quantity}
+                            <div className="flex flex-wrap gap-2 max-h-64 overflow-y-auto pr-1 bg-[#0F1622]/50 p-2.5 rounded-xl border border-[#222E42]">
+                              {displayedEquipment.map((el, i) => {
+                                const confidencePct = Math.round((el.confidence || 0.95) * 100);
+                                const isNightGear = (el.description || '').includes('[NIGHT') || (el.name || '').toLowerCase().includes('night') || (el.name || '').includes('1200') || (el.name || '').toLowerCase().includes('generator') || (el.name || '').toLowerCase().includes('blackout') || (el.name || '').toLowerCase().includes('hazer');
+                                const isDayGear = (el.description || '').includes('[DAY') || (el.name || '').toLowerCase().includes('daylight') || (el.name || '').toLowerCase().includes('sun');
+
+                                let badgeStyle = "bg-cyan-500/10 text-cyan-300 border-cyan-500/30 hover:border-cyan-400";
+                                let tagLabel = "GEAR";
+
+                                if (isNightGear) {
+                                  badgeStyle = "bg-indigo-500/15 text-indigo-200 border-indigo-500/40 hover:border-indigo-400";
+                                  tagLabel = "NIGHT RIG";
+                                } else if (isDayGear) {
+                                  badgeStyle = "bg-amber-500/15 text-amber-200 border-amber-500/40 hover:border-amber-400";
+                                  tagLabel = "DAY RIG";
+                                }
+
+                                return (
+                                  <span
+                                    key={i}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${badgeStyle} transition`}
+                                    title={`${el.name}\n${el.description}\nQuantity: ${el.quantity || 1}\nAI Extraction Confidence: ${confidencePct}%`}
+                                  >
+                                    <span className="font-bold opacity-75 text-[9px] uppercase tracking-wider">{tagLabel}:</span>
+                                    <span>{el.name}</span>
+                                    {el.quantity > 1 && (
+                                      <span className="px-1.5 py-0.2 rounded bg-cyan-900/60 text-[10px] text-cyan-200 font-mono font-bold">
+                                        x{el.quantity}
+                                      </span>
+                                    )}
+                                    <span
+                                      className="text-[10px] opacity-75 font-mono bg-black/40 px-1 rounded"
+                                      title={`AI Extraction Confidence: ${confidencePct}%`}
+                                    >
+                                      {confidencePct}%
                                     </span>
-                                  )}
-                                  <span className="text-[10px] opacity-60 font-mono">
-                                    {Math.round((el.confidence || 0.95) * 100)}%
                                   </span>
-                                </span>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}

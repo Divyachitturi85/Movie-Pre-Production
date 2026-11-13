@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -11,7 +11,9 @@ import {
   Layers,
   Eye,
   FileCode,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { scriptService, analysisService } from '../services/api';
 
@@ -23,9 +25,37 @@ export default function UploadScriptPage() {
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [scriptInfo, setScriptInfo] = useState(null);
+  const [loadingExisting, setLoadingExisting] = useState(false);
+  const [showUploader, setShowUploader] = useState(false);
   const [error, setError] = useState(null);
   const [pastedText, setPastedText] = useState('');
   const [activeTab, setActiveTab] = useState('upload'); // 'upload' or 'paste'
+
+  // Load existing script info for the current project on mount or project switch
+  useEffect(() => {
+    if (!currentProject?.id) return;
+    const fetchExisting = async () => {
+      setLoadingExisting(true);
+      try {
+        const existing = await scriptService.get(currentProject.id);
+        if (existing) {
+          setScriptInfo(existing);
+          // If a script already exists, keep uploader closed by default
+          setShowUploader(false);
+        } else {
+          setScriptInfo(null);
+          setShowUploader(true);
+        }
+      } catch (err) {
+        // No script yet uploaded for this project
+        setScriptInfo(null);
+        setShowUploader(true);
+      } finally {
+        setLoadingExisting(false);
+      }
+    };
+    fetchExisting();
+  }, [currentProject?.id]);
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
@@ -54,6 +84,8 @@ export default function UploadScriptPage() {
       const res = await scriptService.upload(currentProject.id, file);
       setScriptInfo(res);
       await loadProjects();
+      // Automatically navigate to Script Breakdown Sheets
+      navigate('/breakdown');
     } catch (err) {
       console.error('Upload failed:', err);
       setError(err.response?.data?.detail || 'Failed to upload and parse PDF.');
@@ -77,6 +109,8 @@ export default function UploadScriptPage() {
       const res = await scriptService.parse(currentProject.id, pastedText);
       setScriptInfo(res);
       await loadProjects();
+      // Automatically navigate to Script Breakdown Sheets
+      navigate('/breakdown');
     } catch (err) {
       console.error('Parse failed:', err);
       setError(err.response?.data?.detail || 'Failed to parse screenplay text.');
@@ -113,32 +147,6 @@ export default function UploadScriptPage() {
         </p>
       </div>
 
-      {/* Mode Switcher */}
-      <div className="flex border-b border-[#27354F]">
-        <button
-          onClick={() => setActiveTab('upload')}
-          className={`flex items-center gap-2 px-6 py-3 text-xs font-bold border-b-2 transition ${
-            activeTab === 'upload'
-              ? 'border-amber-500 text-amber-400 bg-amber-500/5'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Upload className="w-4 h-4" />
-          <span>Upload PDF Screenplay</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('paste')}
-          className={`flex items-center gap-2 px-6 py-3 text-xs font-bold border-b-2 transition ${
-            activeTab === 'paste'
-              ? 'border-amber-500 text-amber-400 bg-amber-500/5'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <FileCode className="w-4 h-4" />
-          <span>Paste Screenplay Text</span>
-        </button>
-      </div>
-
       {error && (
         <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 flex items-center gap-3 text-rose-400 text-xs">
           <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -146,80 +154,29 @@ export default function UploadScriptPage() {
         </div>
       )}
 
-      {activeTab === 'upload' ? (
-        /* PDF Drag & Drop Area */
-        <div className="bg-[#131B2A] border-2 border-dashed border-[#27354F] hover:border-amber-500/50 rounded-2xl p-8 text-center transition">
-          <input
-            type="file"
-            id="pdf-upload"
-            accept=".pdf"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <label htmlFor="pdf-upload" className="cursor-pointer space-y-4 block">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-              <Upload className="w-7 h-7" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-white">
-                {file ? file.name : 'Select or drag & drop movie screenplay PDF'}
-              </p>
-              <p className="text-xs text-slate-400 mt-1">
-                Supports Standard Industry Screenplay PDF, Scanned / Physical OCR Documents
-              </p>
-            </div>
-          </label>
-
-          <div className="mt-6 flex justify-center">
-            <button
-              onClick={handleUpload}
-              disabled={!file || uploading}
-              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-lg shadow-amber-500/20"
-            >
-              {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              <span>{uploading ? 'Processing PDF & Extracting Equipment...' : 'Upload & Generate Script Breakdown'}</span>
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* Text Paste Area */
-        <div className="space-y-4">
-          <textarea
-            value={pastedText}
-            onChange={(e) => setPastedText(e.target.value)}
-            placeholder="Paste raw screenplay text here (e.g., INT. WAREHOUSE - NIGHT)..."
-            rows={12}
-            className="w-full bg-[#131B2A] border border-[#27354F] rounded-2xl p-4 text-xs font-screenplay text-slate-200 focus:outline-none focus:border-amber-500"
-          />
-          <div className="flex justify-end">
-            <button
-              onClick={handleParsePasted}
-              disabled={!pastedText.trim() || uploading}
-              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition"
-            >
-              {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-              <span>Parse & Extract Production Elements</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Script Ingestion Result Card */}
+      {/* Active Screenplay Ingestion Card */}
       {scriptInfo && (
-        <div className="bg-[#131B2A] border border-emerald-500/30 rounded-2xl p-6 shadow-xl space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-[#131B2A] border border-emerald-500/30 rounded-2xl p-6 shadow-xl space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#222E42] pb-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold">
-                <CheckCircle2 className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold">
+                <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">{scriptInfo.filename}</h3>
-                <p className="text-xs text-slate-400">Parsed into scenes & shoot equipment packages auto-generated</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">{scriptInfo.filename}</h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    Active Script
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Screenplay ingested, parsed into scenes, and equipment packages generated.
+                </p>
               </div>
             </div>
 
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">
-              {scriptInfo.extraction_method} ({Math.round(scriptInfo.ocr_confidence * 100)}% Confidence)
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono self-start sm:self-auto">
+              {scriptInfo.extraction_method} ({Math.round((scriptInfo.ocr_confidence || 1.0) * 100)}% Confidence)
             </span>
           </div>
 
@@ -229,47 +186,153 @@ export default function UploadScriptPage() {
               <span className="text-white font-bold text-base">{scriptInfo.page_count}</span>
             </div>
             <div className="bg-[#182235] p-3 rounded-xl border border-[#27354F]">
-              <span className="text-slate-400 block text-[11px]">Method</span>
-              <span className="text-white font-bold text-sm font-mono">{scriptInfo.extraction_method}</span>
+              <span className="text-slate-400 block text-[11px]">Scenes Parsed</span>
+              <span className="text-amber-400 font-bold text-base">{currentProject?.scene_count || 'Analyzed'}</span>
             </div>
             <div className="bg-[#182235] p-3 rounded-xl border border-[#27354F]">
-              <span className="text-slate-400 block text-[11px]">OCR Confidence</span>
-              <span className="text-emerald-400 font-bold text-base">{Math.round(scriptInfo.ocr_confidence * 100)}%</span>
+              <span className="text-slate-400 block text-[11px]">Extraction Method</span>
+              <span className="text-white font-bold text-xs font-mono">{scriptInfo.extraction_method}</span>
             </div>
             <div className="bg-[#182235] p-3 rounded-xl border border-[#27354F]">
-              <span className="text-slate-400 block text-[11px]">Raw Characters</span>
+              <span className="text-slate-400 block text-[11px]">Script Characters</span>
               <span className="text-white font-bold text-base">{scriptInfo.raw_text?.length || 0}</span>
             </div>
           </div>
 
-          {/* Action Trigger for Next Stage */}
-          <div className="pt-2 flex flex-wrap gap-3 justify-end items-center">
+          {/* Action Triggers */}
+          <div className="pt-2 flex flex-wrap gap-3 justify-between items-center">
             <button
-              onClick={() => navigate('/script-viewer')}
-              className="flex items-center gap-2 bg-[#1A2438] hover:bg-[#27354F] text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold border border-[#27354F] transition"
+              onClick={() => setShowUploader(!showUploader)}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition"
             >
-              <Eye className="w-3.5 h-3.5" />
-              <span>Read in Script Viewer</span>
+              {showUploader ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              <span>{showUploader ? 'Hide Uploader' : 'Replace Screenplay / Upload New File'}</span>
             </button>
 
-            <button
-              onClick={handleRunAnalysis}
-              disabled={analyzing}
-              className="flex items-center gap-2 bg-[#1A2438] hover:bg-[#27354F] text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold border border-[#27354F] transition disabled:opacity-50"
-            >
-              {analyzing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Cpu className="w-3.5 h-3.5 text-amber-400" />}
-              <span>{analyzing ? 'Re-analyzing...' : 'Re-Run NLP Breakdown'}</span>
-            </button>
+            <div className="flex flex-wrap gap-2.5">
+              <button
+                onClick={() => navigate('/script-viewer')}
+                className="flex items-center gap-2 bg-[#1A2438] hover:bg-[#27354F] text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold border border-[#27354F] transition"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Script Viewer</span>
+              </button>
 
+              <button
+                onClick={handleRunAnalysis}
+                disabled={analyzing}
+                className="flex items-center gap-2 bg-[#1A2438] hover:bg-[#27354F] text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold border border-[#27354F] transition disabled:opacity-50"
+              >
+                {analyzing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Cpu className="w-3.5 h-3.5 text-amber-400" />}
+                <span>{analyzing ? 'Re-analyzing...' : 'Re-Run Breakdown'}</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/breakdown')}
+                className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 px-5 py-2 rounded-xl text-xs font-bold transition shadow-lg shadow-amber-500/20"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>View Script Breakdown Sheets</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Uploader Section: Shown when no script exists OR when user chooses to replace script */}
+      {(!scriptInfo || showUploader) && (
+        <div className="space-y-4">
+          {scriptInfo && (
+            <div className="text-xs font-semibold text-amber-400/90 uppercase tracking-wider flex items-center gap-2">
+              <Upload className="w-3.5 h-3.5" />
+              <span>Replace Current Script</span>
+            </div>
+          )}
+
+          {/* Mode Switcher */}
+          <div className="flex border-b border-[#27354F]">
             <button
-              onClick={() => navigate('/breakdown')}
-              className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 px-5 py-2 rounded-xl text-xs font-bold transition shadow-lg shadow-amber-500/20"
+              onClick={() => setActiveTab('upload')}
+              className={`flex items-center gap-2 px-6 py-3 text-xs font-bold border-b-2 transition ${
+                activeTab === 'upload'
+                  ? 'border-amber-500 text-amber-400 bg-amber-500/5'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
             >
-              <Layers className="w-3.5 h-3.5" />
-              <span>View Script Breakdown Sheets</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <Upload className="w-4 h-4" />
+              <span>Upload PDF Screenplay</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('paste')}
+              className={`flex items-center gap-2 px-6 py-3 text-xs font-bold border-b-2 transition ${
+                activeTab === 'paste'
+                  ? 'border-amber-500 text-amber-400 bg-amber-500/5'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileCode className="w-4 h-4" />
+              <span>Paste Screenplay Text</span>
             </button>
           </div>
+
+          {activeTab === 'upload' ? (
+            /* PDF Drag & Drop Area */
+            <div className="bg-[#131B2A] border-2 border-dashed border-[#27354F] hover:border-amber-500/50 rounded-2xl p-8 text-center transition">
+              <input
+                type="file"
+                id="pdf-upload"
+                accept=".pdf"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <label htmlFor="pdf-upload" className="cursor-pointer space-y-4 block">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                  <Upload className="w-7 h-7" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {file ? file.name : 'Select or drag & drop movie screenplay PDF'}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Supports Standard Industry Screenplay PDF, Scanned / Physical OCR Documents
+                  </p>
+                </div>
+              </label>
+
+              <div className="mt-6 flex justify-center">
+                <button
+                  onClick={handleUpload}
+                  disabled={!file || uploading}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-lg shadow-amber-500/20"
+                >
+                  {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  <span>{uploading ? 'Processing PDF & Generating Breakdown...' : 'Upload & Generate Script Breakdown'}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Text Paste Area */
+            <div className="space-y-4">
+              <textarea
+                value={pastedText}
+                onChange={(e) => setPastedText(e.target.value)}
+                placeholder="Paste raw screenplay text here (e.g., INT. WAREHOUSE - NIGHT)..."
+                rows={12}
+                className="w-full bg-[#131B2A] border border-[#27354F] rounded-2xl p-4 text-xs font-screenplay text-slate-200 focus:outline-none focus:border-amber-500"
+              />
+              <div className="flex justify-end">
+                <button
+                  onClick={handleParsePasted}
+                  disabled={!pastedText.trim() || uploading}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs transition"
+                >
+                  {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                  <span>{uploading ? 'Parsing Screenplay...' : 'Parse & Generate Script Breakdown'}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

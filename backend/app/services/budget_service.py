@@ -19,7 +19,8 @@ class BudgetService:
         shooting_days: int = 4,
         cast_count: int = 5,
         location_count: int = 4,
-        has_vfx: bool = True
+        has_vfx: bool = True,
+        location_total_cost: float = None
     ) -> Dict[str, Any]:
         """
         Creates an initial comprehensive budget based on production parameters.
@@ -214,6 +215,12 @@ class BudgetService:
             "subtotal": 700.0 * float(days),
             "notes": "Daily character makeup and touch-ups"
         })
+        loc_unit_rate = 1800.0
+        loc_subtotal = float(location_count) * loc_unit_rate
+        if location_total_cost is not None and location_total_cost > 0:
+            loc_subtotal = round(float(location_total_cost), 2)
+            loc_unit_rate = round(loc_subtotal / max(1.0, float(location_count)), 2)
+
         items.append({
             "category": "BELOW_THE_LINE",
             "department": "Locations",
@@ -221,10 +228,10 @@ class BudgetService:
             "description": "Location Permits, Site Fees & Security",
             "quantity": float(location_count),
             "unit": "Flat",
-            "unit_rate": 1800.0,
+            "unit_rate": loc_unit_rate,
             "days_count": 1.0,
-            "subtotal": float(location_count) * 1800.0,
-            "notes": "Municipal permits, security, insurance riders"
+            "subtotal": loc_subtotal,
+            "notes": "Municipal permits, security, insurance riders & site rental"
         })
         items.append({
             "category": "BELOW_THE_LINE",

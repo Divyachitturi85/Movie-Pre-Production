@@ -23,6 +23,7 @@ from app.services.nlp_service import NLPService
 from app.services.complexity_service import ComplexityService
 from app.services.scheduler_service import SchedulerService
 from app.services.budget_service import BudgetService
+from app.services.location_service import LocationService
 from app.services.call_sheet_service import CallSheetService
 from app.services.callback_service import CallbackService
 from app.services.character_service import CharacterService, BLACKLIST, STANDALONE_TITLES
@@ -346,7 +347,8 @@ class DemoService:
                     stat["dialogues"] += 2
 
             # Aggregate location stats
-            loc_name = sc_data.get("location_name", "UNKNOWN")
+            raw_loc = sc_data.get("location_name", "UNKNOWN")
+            loc_name = LocationService.canonicalize_location_name(raw_loc, scene_model.interior_exterior)
             l_stat = location_stats.setdefault(loc_name, {"scenes": [], "ie": scene_model.interior_exterior, "dn": scene_model.time_of_day})
             l_stat["scenes"].append(scene_model.scene_number)
 
@@ -377,19 +379,32 @@ class DemoService:
             db.flush()
             character_models[c_name] = c_model
 
-        # 4. Create Locations
+        # 4. Create Locations with dynamic realistic costs
         location_models = {}
         for loc_name, l_stat in location_stats.items():
+            sc_cnt = len(l_stat["scenes"])
+            req_days = max(1, (sc_cnt + 2) // 3)
+            move_req = sc_cnt < 3
+            calc_cost = LocationService.calculate_location_cost(
+                name=loc_name,
+                interior_exterior=l_stat["ie"],
+                day_night=l_stat["dn"],
+                scene_count=sc_cnt,
+                required_days=req_days,
+                company_move_required=move_req
+            )
+            desc = LocationService.get_location_description(loc_name, l_stat["ie"])
+
             loc_model = Location(
                 project_id=project.id,
                 name=loc_name,
                 interior_exterior=l_stat["ie"],
                 day_night=l_stat["dn"],
-                scene_count=len(l_stat["scenes"]),
-                required_days=max(1, (len(l_stat["scenes"]) + 2) // 3),
-                company_move_required=len(l_stat["scenes"]) < 3,
-                estimated_cost=2500.0 if "LAB" in loc_name or "HARBOR" in loc_name else 1200.0,
-                address_or_description=f"Studio Stage / Industrial Zone - {loc_name}",
+                scene_count=sc_cnt,
+                required_days=req_days,
+                company_move_required=move_req,
+                estimated_cost=calc_cost,
+                address_or_description=desc,
                 scene_ids=l_stat["scenes"]
             )
             db.add(loc_model)

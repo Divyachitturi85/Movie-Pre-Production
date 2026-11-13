@@ -3,9 +3,20 @@ import re
 import io
 import logging
 from typing import Tuple, Dict, Any, List
-import pymupdf  # PyMuPDF
-from PIL import Image
-import numpy as np
+try:
+    import pymupdf  # PyMuPDF
+except ImportError:
+    try:
+        import fitz as pymupdf
+    except ImportError:
+        pymupdf = None
+
+try:
+    from PIL import Image
+    import numpy as np
+except ImportError:
+    Image = None
+    np = None
 
 # Disable slow/hanging connectivity checks to external hosters in paddlex/paddleocr
 os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
@@ -244,9 +255,18 @@ class PDFService:
         # Remove standalone page numbers at top/bottom of pages
         text = re.sub(r'^\s*(?:Page\s+)?\d+\s*[\.\)]?\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
 
-        # Standardize common heading typos
-        text = re.sub(r'^\s*(INT|EXT|I/E|INT/EXT)\s*[\.-]?\s*', lambda m: f"{m.group(1).upper().replace('/', '/.')}. ", text, flags=re.MULTILINE | re.IGNORECASE)
+        # Standardize common heading typos only when followed by a dot, slash, space, or colon
+        # MUST NOT match INTERCUT, INTER-CUT, INTERNAL, EXTERIOR, EXTRA, etc.
+        text = re.sub(
+            r'^\s*(INT\./EXT\.|EXT\./INT\.|INT/EXT|INT\.|EXT\.|I/E\.|INT(?=[\s\./])|EXT(?=[\s\./])|I/E(?=[\s\./]))\s*[\.-]?\s*',
+            lambda m: f"{m.group(1).upper().replace('/', '/.')}. ",
+            text,
+            flags=re.MULTILINE | re.IGNORECASE
+        )
         text = re.sub(r'INT\.\s*/\s*EXT\.', 'INT./EXT.', text)
+
+        # Heal any previously mangled or OCR-mangled INTERCUT lines
+        text = re.sub(r'INT\.\s*ER[\-\s]?CUT\b', 'INTERCUT', text, flags=re.IGNORECASE)
 
         # Collapse 3+ consecutive newlines to 2
         text = re.sub(r'\n{3,}', '\n\n', text)

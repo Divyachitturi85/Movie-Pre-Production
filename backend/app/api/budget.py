@@ -29,14 +29,17 @@ def generate_budget(project_id: int, db: Session = Depends(get_db)):
     sched = db.query(Schedule).filter(Schedule.project_id == project_id).first()
     days = sched.total_days if sched else 4
     cast_cnt = db.query(Character).filter(Character.project_id == project_id).count() or 5
-    loc_cnt = db.query(Location).filter(Location.project_id == project_id).count() or 4
+    locations = db.query(Location).filter(Location.project_id == project_id).all()
+    loc_cnt = len(locations) if locations else 4
+    total_loc_cost = sum(l.estimated_cost for l in locations) if locations else None
 
     budget_svc = BudgetService()
     b_data = budget_svc.generate_initial_budget(
         shooting_days=days,
         cast_count=cast_cnt,
         location_count=loc_cnt,
-        has_vfx=True
+        has_vfx=True,
+        location_total_cost=total_loc_cost
     )
 
     # Delete existing budget if present
@@ -93,6 +96,32 @@ def generate_budget(project_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(budget)
 
+    return enrich_budget_with_actuals(budget)
+
+def enrich_budget_with_actuals(budget: Budget) -> Budget:
+    actual_subtotal = 0.0
+    for item in budget.items or []:
+        markup = 1.15 if item.category == "ABOVE_THE_LINE" else 1.22
+        actual_rate = round(item.unit_rate * markup, 2)
+        actual_item_subtotal = round(item.quantity * actual_rate * item.days_count, 2)
+        item.actual_unit_rate = actual_rate
+        item.actual_subtotal = actual_item_subtotal
+        actual_subtotal += actual_item_subtotal
+
+    actual_subtotal = round(actual_subtotal, 2)
+    c_rate = budget.contingency_rate if budget.contingency_rate is not None else 0.10
+    t_rate = budget.tax_rate if budget.tax_rate is not None else 0.08
+    actual_contingency = round(actual_subtotal * c_rate, 2)
+    actual_tax = round((actual_subtotal + actual_contingency) * t_rate, 2)
+    actual_grand_total = round(actual_subtotal + actual_contingency + actual_tax, 2)
+
+    budget.actual_subtotal = actual_subtotal
+    budget.actual_contingency_amount = actual_contingency
+    budget.actual_tax_amount = actual_tax
+    budget.actual_grand_total = actual_grand_total
+    opt_gt = budget.grand_total or 0.0
+    budget.savings_amount = round(max(0.0, actual_grand_total - opt_gt), 2)
+    budget.savings_percentage = round((budget.savings_amount / actual_grand_total) * 100, 1) if actual_grand_total > 0 else 0.0
     return budget
 
 @router.get("", response_model=BudgetResponse)
@@ -101,7 +130,7 @@ def get_budget(project_id: int, db: Session = Depends(get_db)):
     if not budget:
         # Auto-generate if not created yet
         return generate_budget(project_id, db)
-    return budget
+    return enrich_budget_with_actuals(budget)
 
 @router.put("/items", response_model=BudgetResponse)
 def update_budget_items(
@@ -162,7 +191,7 @@ def update_budget_items(
 
     db.commit()
     db.refresh(budget)
-    return budget
+    return enrich_budget_with_actuals(budget)
 
 @router.put("/config", response_model=BudgetResponse)
 def update_budget_config(
@@ -192,4 +221,4 @@ def update_budget_config(
 
     db.commit()
     db.refresh(budget)
-    return budget
+    return enrich_budget_with_actuals(budget)

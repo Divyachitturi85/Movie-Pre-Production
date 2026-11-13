@@ -204,12 +204,26 @@ def reparse_script(
     payload: ScriptParseRequest,
     db: Session = Depends(get_db)
 ):
-    """Re-runs screenplay parser on custom text or stored script"""
     script = db.query(Script).filter(Script.project_id == project_id).first()
-    if not script:
-        raise HTTPException(status_code=404, detail="Script not found")
+    text_to_parse = payload.raw_text or (script.cleaned_text if script else "") or (script.raw_text if script else "")
+    if not text_to_parse.strip():
+        raise HTTPException(status_code=400, detail="No screenplay text provided to parse")
 
-    text_to_parse = payload.raw_text or script.cleaned_text or script.raw_text
+    if not script:
+        script = Script(
+            project_id=project_id,
+            filename="Pasted_Screenplay.txt",
+            file_path="memory://pasted",
+            file_size_bytes=len(text_to_parse.encode("utf-8")),
+            page_count=max(1, len(text_to_parse.splitlines()) // 54),
+            extraction_method="DIRECT_INPUT",
+            ocr_confidence=1.0,
+            raw_text=text_to_parse,
+            cleaned_text=text_to_parse
+        )
+        db.add(script)
+        db.commit()
+        db.refresh(script)
     parser = ScriptParser()
     parsed_scenes = parser.parse_screenplay(text_to_parse)
 
